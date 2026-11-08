@@ -2,6 +2,8 @@
 
 **Live: [cyberrun-tau.vercel.app](https://cyberrun-tau.vercel.app)**
 
+[![CI](https://github.com/Mudabbirarafat/cyberrun/actions/workflows/ci.yml/badge.svg)](https://github.com/Mudabbirarafat/cyberrun/actions/workflows/ci.yml)
+
 An endless runner that runs in a browser tab. Three lanes, a city at night,
 and a track generated as you go.
 
