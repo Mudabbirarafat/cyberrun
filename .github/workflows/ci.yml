@@ -1,0 +1,49 @@
+# Runs what a reviewer would run before believing the README.
+#
+# One job rather than four parallel ones: the install dominates, and splitting
+# it would mean paying for four of them to save a few seconds of wall clock on
+# a repo that takes under two minutes end to end.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same branch makes the first run's answer worthless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # The version this is developed on. Vite 7 needs 20.19+, so this is
+          # a deliberate choice rather than the floor.
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # oxlint exits 0 on warnings. The ones it reports here are deliberate -
+      # drei's useTexture hands back a cached texture that this scene is the
+      # only user of, and configuring it in place is the idiom - so the step
+      # is here to catch new errors, not to be silent.
+      - run: npm run lint
+
+      - run: npm run typecheck
+
+      # The whole simulation is testable without a browser: no canvas, no
+      # WebGL, nothing to mock. That is the point of the architecture and this
+      # is where it pays.
+      - run: npm test
+
+      # tsc -b plus vite build. A type error that only the build's stricter
+      # project references catch has slipped through before.
+      - run: npm run build
