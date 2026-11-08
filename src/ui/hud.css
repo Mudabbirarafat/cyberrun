@@ -249,3 +249,25 @@ kbd {
     transition: none;
   }
 }
+
+/* The runner's own face, cropped to head-and-shoulders.
+   The source is a full portrait, so the wrapper clips and the image is
+   scaled and nudged inside it rather than shipping a second, pre-cut file. */
+.avatar {
+  width: clamp(72px, 18vw, 96px);
+  height: clamp(72px, 18vw, 96px);
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid rgba(34, 211, 238, 0.55);
+  box-shadow: 0 0 26px rgba(34, 211, 238, 0.3);
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 52% 26%;
+  transform: scale(1.75);
+  transform-origin: 52% 26%;
+}

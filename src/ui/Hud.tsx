@@ -76,6 +76,12 @@ function GameOver() {
   return (
     <div className="overlay">
       <div className="panel">
+        {/* The runner turns to face the camera on a crash, but at that
+            distance the head is a few pixels. This is the same photo, big
+            enough to be a face. */}
+        <div className="avatar">
+          <img src="/face.jpg" alt="" aria-hidden="true" />
+        </div>
         <h2>{beatBest ? "New best" : "Wiped out"}</h2>
         <div className="final">{score.toLocaleString()}</div>
         <div className="breakdown">

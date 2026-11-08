@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { Suspense, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { playEvents } from "../audio";
 import { MAX_SPEED, START_SPEED } from "../game/constants";
@@ -87,7 +87,12 @@ export function GameScene() {
 
       <Track />
       <Entities />
-      <Player />
+      {/* The runner's face is a texture, and useTexture suspends while it loads.
+          Without a boundary that suspension unmounts the whole scene for a
+          frame; with one, the track is already there when the figure arrives. */}
+      <Suspense fallback={null}>
+        <Player />
+      </Suspense>
     </>
   );
 }
