@@ -128,9 +128,9 @@ export function Player() {
         <mesh position={[0, LEG + TORSO / 2, 0]} castShadow>
           <boxGeometry args={[0.72, TORSO, 0.4]} />
           <meshStandardMaterial
-            color="#22d3ee"
-            emissive="#0e7490"
-            emissiveIntensity={0.55}
+            color="#167d9c"
+            emissive="#17a8c9"
+            emissiveIntensity={0.45}
             roughness={0.45}
             metalness={0.25}
           />
@@ -139,20 +139,20 @@ export function Player() {
         <group ref={leftArm} position={[-0.45, SHOULDER, 0]}>
           <mesh position={[0, -ARM / 2, 0]} castShadow>
             <boxGeometry args={[0.17, ARM, 0.19]} />
-            <meshStandardMaterial color="#8d6448" roughness={0.85} />
+            <meshStandardMaterial color="#a4785a" emissive="#3d2415" emissiveIntensity={0.35} roughness={0.8} />
           </mesh>
         </group>
         <group ref={rightArm} position={[0.45, SHOULDER, 0]}>
           <mesh position={[0, -ARM / 2, 0]} castShadow>
             <boxGeometry args={[0.17, ARM, 0.19]} />
-            <meshStandardMaterial color="#8d6448" roughness={0.85} />
+            <meshStandardMaterial color="#a4785a" emissive="#3d2415" emissiveIntensity={0.35} roughness={0.8} />
           </mesh>
         </group>
 
         <group ref={leftLeg} position={[-0.17, LEG, 0]}>
           <mesh position={[0, -LEG / 2, 0]} castShadow>
             <boxGeometry args={[0.22, LEG, 0.24]} />
-            <meshStandardMaterial color="#1e3a5f" roughness={0.7} />
+            <meshStandardMaterial color="#2a4f7d" emissive="#12354f" emissiveIntensity={0.5} roughness={0.6} />
           </mesh>
         </group>
         <group ref={rightLeg} position={[0.17, LEG, 0]}>

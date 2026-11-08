@@ -13,7 +13,7 @@ export default function App() {
         // Capped rather than uncapped: on a high-density display the default
         // renders four times the pixels, and this is a game that has to hold
         // a frame rate on a laptop, not a still that has to look sharp.
-        dpr={[1, 1.75]}
+        dpr={[1, 1.25]}
         camera={{ position: [0, 4.7, 9.8], fov: 60, near: 0.1, far: 260 }}
         gl={{ antialias: true, powerPreference: "high-performance" }}
       >

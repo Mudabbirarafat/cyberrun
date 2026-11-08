@@ -59,15 +59,15 @@ lanes you could be in *going into* a row and returns the set you can be in
 
 ## What is measured
 
-Frame timing, 120 frames in the dev build at 865×846, device pixel ratio
-capped at 1.75:
+Frame timing with the full effect stack running, 240 frames in the dev build
+at 865×846, device pixel ratio capped at 1.25:
 
 | | |
 |---|---|
-| frames per second | 61 |
+| frames per second | 60 |
 | median frame | 16.7 ms |
 | 95th percentile | 16.8 ms |
-| worst frame | 16.9 ms |
+| worst frame | 17.4 ms |
 
 The gap between median and worst is the number worth looking at. 0.2 ms means
 nothing was allocated and nothing collected during those two seconds:
@@ -76,7 +76,55 @@ than components that mount and unmount, and the track and skyline are a fixed
 ring of geometry slid backwards and wrapped rather than geometry built as you
 run.
 
-Production bundle: 317 KB gzipped, nearly all of it Three.js.
+Production bundle: 342 KB gzipped, nearly all of it Three.js and the
+postprocessing library.
+
+## How it looks
+
+The first version was flat colours on hard cubes under a white key light, and
+it looked like a toy. Four things changed that, none of them an asset.
+
+**Bloom does most of the work.** Almost every surface is near-black and the
+few that are not are emissive and marked `toneMapped={false}`, so they arrive
+above the bloom threshold and bleed. The contrast between a black body and a
+blown-out edge is the entire look.
+
+**Obstacles are drawn twice.** A near-black body, then a slightly larger copy
+with its faces flipped inwards — only the parts of that copy sticking out past
+the body are visible, which gives a hard emissive rim for one extra instanced
+draw. An outline pass or edge geometry would cost far more. The first attempt
+pushed the rim 30% out in depth and the bodies disappeared entirely, so the
+obstacles read as wireframe rectangles floating in the air; the rim is now a
+few percent.
+
+**The city's windows are a canvas texture, not geometry.** A skyline of lit
+windows as meshes is tens of thousands of quads for something the fog eats
+within eighty units. One 256px canvas, drawn once at startup and used as an
+emissive map, gets there for nothing. Two thirds of the windows are dark,
+because a uniformly lit block reads as a texture swatch rather than a building
+at night.
+
+**Nothing is shaded that does not need to be.** The road, the ground and the
+buildings use Lambert; the rails, coins and power-ups are unlit `MeshBasic`,
+because a neon strip is self-lit by definition and lighting maths on it is
+wasted. Only the runner uses a physically based material, and it is a few
+hundred pixels.
+
+Bloom renders at half resolution. The result is blurred, so the pixels thrown
+away are ones nobody can see.
+
+### A measurement that was lying
+
+Partway through this the frame rate appeared to collapse from 61fps to 18, and
+a round of optimisation followed. It turned out the measurement was taken in a
+**background browser tab**, which the browser throttles — the giveaway was a
+median of exactly 33.3ms, which is two vsync intervals rather than anything a
+renderer would produce on its own. Fronted, the same build ran at 60 with the
+effects off *and* on.
+
+The optimisations were kept, because they are all free in quality terms, but
+the panic was caused by a number rather than by the game. Any frame-rate
+figure taken from a tab that is not in front is worth nothing.
 
 ## Playing it
 

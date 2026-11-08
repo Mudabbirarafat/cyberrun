@@ -5,44 +5,92 @@ import { LANE_X, SPAWN_AHEAD } from "../game/constants";
 import { getWorld } from "../store";
 
 /**
- * The road, its lane markings and the city either side.
+ * The road, the rails and the city.
  *
- * None of this is generated per frame. A fixed ring of buildings and stripes
- * is created once and then slid backwards as the player advances, wrapping
- * round when a piece falls behind. An endless runner that spawned geometry
- * would spend its whole budget in the garbage collector.
+ * Nothing is generated per frame. A fixed ring of stripes and buildings is
+ * built once and slid backwards as the player advances, wrapping when a piece
+ * falls behind, so an endless city costs the same as a finite one.
+ *
+ * The windows are a canvas texture rather than geometry. A skyline of lit
+ * windows as meshes would be tens of thousands of quads for something the fog
+ * eats within eighty units; as an emissive map it is one 256px canvas, drawn
+ * once at startup, and bloom does the rest.
  */
 
 const ROAD_LENGTH = SPAWN_AHEAD + 60;
 const ROAD_WIDTH = 9.5;
 const STRIPE_COUNT = 40;
 const STRIPE_SPACING = 6;
-const BUILDING_COUNT = 90;
-const BUILDING_SPACING = 11;
+const BUILDING_COUNT = 110;
+const BUILDING_SPACING = 10;
 
 const dummy = new THREE.Object3D();
+const colour = new THREE.Color();
+
+/** Deterministic hash, so the same skyline returns on every load. */
+function hash(n: number): number {
+  const x = Math.sin(n * 127.1) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+function useWindowTexture() {
+  return useMemo(() => {
+    const size = 256;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 0, size, size);
+
+    const cols = 10;
+    const rows = 16;
+    const cellW = size / cols;
+    const cellH = size / rows;
+
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        // Most windows are dark. A block that is uniformly lit reads as a
+        // texture swatch; one that is mostly off reads as a building at night.
+        const lit = hash(x * 31 + y * 17);
+        if (lit > 0.26) continue;
+        const warmth = hash(x * 7 + y * 53);
+        ctx.fillStyle =
+          warmth > 0.72 ? "#ffd9a8" : warmth > 0.4 ? "#bfe9ff" : "#7aa6ff";
+        ctx.globalAlpha = 0.45 + hash(x + y * 3) * 0.55;
+        ctx.fillRect(x * cellW + 2, y * cellH + 2, cellW - 4, cellH - 5);
+      }
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(2, 5);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+  }, []);
+}
 
 export function Track() {
   const stripes = useRef<THREE.InstancedMesh>(null);
   const buildings = useRef<THREE.InstancedMesh>(null);
+  const windows = useWindowTexture();
 
-  // Heights and offsets fixed up front: a skyline that reshuffled itself as
-  // you ran would read as flicker, not variety.
   const skyline = useMemo(() => {
-    const out: { side: number; height: number; depth: number; offset: number; hue: number }[] = [];
+    const out: { side: number; height: number; depth: number; offset: number; tint: number }[] = [];
     for (let i = 0; i < BUILDING_COUNT; i++) {
-      const side = i % 2 === 0 ? -1 : 1;
-      // A cheap deterministic hash, so the same skyline comes back every load.
-      const n = Math.sin(i * 12.9898) * 43758.5453;
-      const r = n - Math.floor(n);
-      const n2 = Math.sin(i * 78.233) * 12345.6789;
-      const r2 = n2 - Math.floor(n2);
+      const a = hash(i);
+      const b = hash(i * 2.7 + 11);
       out.push({
-        side,
-        height: 7 + r * 26,
-        depth: 5 + r2 * 5,
-        offset: 9 + r2 * 7,
-        hue: r,
+        side: i % 2 === 0 ? -1 : 1,
+        height: 9 + a * 34,
+        depth: 5 + b * 6,
+        // Pushed back in a second row now and then, so the skyline has depth
+        // rather than being a corridor of equal slabs.
+        offset: 9 + b * 6 + (hash(i * 5.3) > 0.68 ? 9 : 0),
+        tint: a,
       });
     }
     return out;
@@ -57,10 +105,8 @@ export function Track() {
       for (let lane = 0; lane < 2; lane++) {
         const x = (LANE_X[lane]! + LANE_X[lane + 1]!) / 2;
         for (let i = 0; i < STRIPE_COUNT; i++) {
-          // Wrapping with a modulo on the travelled distance: the stripe that
-          // leaves the back of the view is the one that appears at the front.
           const z = -(((i * STRIPE_SPACING - distance) % span) + span) % span;
-          dummy.position.set(x, 0.02, z - 10);
+          dummy.position.set(x, 0.015, z - 10);
           dummy.rotation.set(-Math.PI / 2, 0, 0);
           dummy.scale.set(1, 1, 1);
           dummy.updateMatrix();
@@ -72,8 +118,7 @@ export function Track() {
     }
 
     if (buildings.current) {
-      const span = BUILDING_COUNT * BUILDING_SPACING * 0.5;
-      let index = 0;
+      const span = (BUILDING_COUNT / 2) * BUILDING_SPACING;
       for (let i = 0; i < skyline.length; i++) {
         const b = skyline[i]!;
         const base = Math.floor(i / 2) * BUILDING_SPACING;
@@ -82,14 +127,13 @@ export function Track() {
         dummy.rotation.set(0, 0, 0);
         dummy.scale.set(b.depth, b.height, b.depth);
         dummy.updateMatrix();
-        buildings.current.setMatrixAt(index, dummy.matrix);
-        buildings.current.setColorAt(
-          index,
-          new THREE.Color().setHSL(0.55 + b.hue * 0.18, 0.55, 0.12 + b.hue * 0.12),
-        );
-        index++;
+        buildings.current.setMatrixAt(i, dummy.matrix);
+        // Cool and nearly black: the windows supply the colour, the mass
+        // supplies the silhouette.
+        colour.setHSL(0.6 + b.tint * 0.1, 0.5, 0.035 + b.tint * 0.025);
+        buildings.current.setColorAt(i, colour);
       }
-      buildings.current.count = index;
+      buildings.current.count = skyline.length;
       buildings.current.instanceMatrix.needsUpdate = true;
       if (buildings.current.instanceColor) buildings.current.instanceColor.needsUpdate = true;
     }
@@ -97,41 +141,56 @@ export function Track() {
 
   return (
     <group>
+      {/* Road. Dark and smooth, so the rails have something to sit against. */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, -ROAD_LENGTH / 2 + 10]} receiveShadow>
         <planeGeometry args={[ROAD_WIDTH, ROAD_LENGTH]} />
-        <meshStandardMaterial color="#161b2e" roughness={0.8} metalness={0.15} />
+        <meshLambertMaterial color="#04050c" />
       </mesh>
 
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, -ROAD_LENGTH / 2 + 10]}>
-        <planeGeometry args={[220, ROAD_LENGTH]} />
-        <meshStandardMaterial color="#070910" roughness={1} />
+      {/* Ground either side, darker still. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.06, -ROAD_LENGTH / 2 + 10]}>
+        <planeGeometry args={[130, ROAD_LENGTH]} />
+        <meshBasicMaterial color="#03040a" />
       </mesh>
 
       {[-1, 1].map((side) => (
-        <mesh key={side} position={[side * (ROAD_WIDTH / 2), 0.18, -ROAD_LENGTH / 2 + 10]}>
-          <boxGeometry args={[0.18, 0.36, ROAD_LENGTH]} />
-          <meshStandardMaterial
-            color="#19e6ff"
-            emissive="#19e6ff"
-            emissiveIntensity={1.6}
-            toneMapped={false}
-          />
-        </mesh>
+        <group key={side}>
+          <mesh position={[side * (ROAD_WIDTH / 2), 0.16, -ROAD_LENGTH / 2 + 10]}>
+            <boxGeometry args={[0.14, 0.32, ROAD_LENGTH]} />
+            <meshBasicMaterial color="#8ffaff" toneMapped={false} />
+          </mesh>
+          {/* The rail's reflection in the wet road. Additive and faint: a
+              cheap stand-in for a reflection pass, which at this frame budget
+              would cost a second render of the whole scene. */}
+          <mesh
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[side * (ROAD_WIDTH / 2 - 0.55), 0.012, -ROAD_LENGTH / 2 + 10]}
+          >
+            <planeGeometry args={[1.1, ROAD_LENGTH]} />
+            <meshBasicMaterial
+              color="#19e6ff"
+              transparent
+              opacity={0.1}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+              toneMapped={false}
+            />
+          </mesh>
+        </group>
       ))}
 
       <instancedMesh ref={stripes} args={[undefined, undefined, STRIPE_COUNT * 2]}>
-        <planeGeometry args={[0.14, 3]} />
-        <meshStandardMaterial
-          color="#9fb4d8"
-          emissive="#2b3b5c"
-          emissiveIntensity={0.5}
-          toneMapped={false}
-        />
+        <planeGeometry args={[0.1, 2.6]} />
+        <meshBasicMaterial color="#5f7ea8" transparent opacity={0.5} toneMapped={false} />
       </instancedMesh>
 
-      <instancedMesh ref={buildings} args={[undefined, undefined, BUILDING_COUNT]} castShadow>
+      <instancedMesh ref={buildings} args={[undefined, undefined, BUILDING_COUNT]}>
         <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial roughness={0.6} metalness={0.35} />
+        <meshLambertMaterial
+          emissiveMap={windows ?? undefined}
+          emissive="#ffffff"
+          emissiveIntensity={0.85}
+        />
       </instancedMesh>
     </group>
   );

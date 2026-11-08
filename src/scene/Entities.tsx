@@ -7,22 +7,26 @@ import {
   OBSTACLE_HALF_WIDTH,
   OVERHEAD_CLEARANCE,
 } from "../game/constants";
-import type { ObstacleKind, PowerKind } from "../game/types";
+import type { PowerKind } from "../game/types";
 import { getWorld } from "../store";
 
 /**
- * Everything on the track, drawn as five instanced meshes.
+ * Everything on the track, as instanced meshes.
  *
- * A run holds a few dozen live entities and recycles them constantly. Giving
- * each one a React component would mean mounting and unmounting meshes at
- * speed; instancing means the count changes and nothing is created. The
- * shapes deliberately match the collision boxes in `constants.ts` - a barrier
- * is drawn exactly as high as the height you must clear, so what you see is
- * what you hit.
+ * Each obstacle is drawn twice: a near-black body, and a slightly larger copy
+ * with its faces flipped inwards. Only the parts of that larger copy sticking
+ * out past the body are visible, which gives a hard emissive rim for nothing
+ * but a second instanced draw - an outline pass or edge geometry would cost
+ * far more. Against a black body, bloom turns that rim into neon.
+ *
+ * The shapes still match the collision boxes in `constants.ts`: a barrier is
+ * exactly as high as the height you must clear, and an overhead's underside
+ * sits exactly at the clearance you must get beneath.
  */
 
 const MAX = 96;
 const dummy = new THREE.Object3D();
+const tint = new THREE.Color();
 
 const POWER_COLOUR: Record<PowerKind, string> = {
   shield: "#4ade80",
@@ -30,18 +34,20 @@ const POWER_COLOUR: Record<PowerKind, string> = {
   slow: "#60a5fa",
 };
 
-function useInstances() {
-  return useRef<THREE.InstancedMesh>(null);
-}
+/** How far the rim copy sticks out past the body. */
+const RIM = { x: 1.04, y: 1.03, z: 1.06 };
 
 export function Entities() {
-  const barriers = useInstances();
-  const overheads = useInstances();
-  const blocks = useInstances();
-  const coins = useInstances();
-  const powers = useInstances();
+  const barrierBody = useRef<THREE.InstancedMesh>(null);
+  const barrierRim = useRef<THREE.InstancedMesh>(null);
+  const overheadBody = useRef<THREE.InstancedMesh>(null);
+  const overheadRim = useRef<THREE.InstancedMesh>(null);
+  const blockBody = useRef<THREE.InstancedMesh>(null);
+  const blockRim = useRef<THREE.InstancedMesh>(null);
+  const coins = useRef<THREE.InstancedMesh>(null);
+  const powers = useRef<THREE.InstancedMesh>(null);
 
-  useFrame((_, delta) => {
+  useFrame(() => {
     const world = getWorld();
     const counts = { barrier: 0, overhead: 0, block: 0, coin: 0, power: 0 };
 
@@ -51,13 +57,15 @@ export function Entities() {
       x: number,
       y: number,
       z: number,
-      rotation = 0,
+      rim: boolean,
+      spin = 0,
       colour?: THREE.Color,
     ) => {
       if (!mesh || index >= MAX) return;
       dummy.position.set(x, y, z);
-      dummy.rotation.set(0, 0, rotation);
-      dummy.scale.set(1, 1, 1);
+      dummy.rotation.set(0, 0, spin);
+      if (rim) dummy.scale.set(RIM.x, RIM.y, RIM.z);
+      else dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
       mesh.setMatrixAt(index, dummy.matrix);
       if (colour) mesh.setColorAt(index, colour);
@@ -66,49 +74,45 @@ export function Entities() {
     const spin = world.time * 2.4;
 
     for (const entity of world.entities) {
-      // Spent entities are kept until they are recycled so the arrays stay
-      // stable, but a collected coin should not still be sitting there.
       if (entity.spent) continue;
       const z = -(entity.z - world.distance);
-      if (z > 6 || z < -(220)) continue;
+      if (z > 6 || z < -220) continue;
       const x = LANE_X[entity.lane]!;
 
       if (entity.kind === "obstacle") {
-        const kind = entity.obstacle as ObstacleKind;
-        if (kind === "barrier") {
-          write(barriers.current, counts.barrier++, x, BARRIER_HEIGHT / 2, z);
-        } else if (kind === "overhead") {
-          // Hangs from above, its underside at the clearance height.
-          write(
-            overheads.current,
-            counts.overhead++,
-            x,
-            OVERHEAD_CLEARANCE + 0.9,
-            z,
-          );
+        if (entity.obstacle === "barrier") {
+          const i = counts.barrier++;
+          write(barrierBody.current, i, x, BARRIER_HEIGHT / 2, z, false);
+          write(barrierRim.current, i, x, BARRIER_HEIGHT / 2, z, true);
+        } else if (entity.obstacle === "overhead") {
+          const i = counts.overhead++;
+          write(overheadBody.current, i, x, OVERHEAD_CLEARANCE + 0.9, z, false);
+          write(overheadRim.current, i, x, OVERHEAD_CLEARANCE + 0.9, z, true);
         } else {
-          write(blocks.current, counts.block++, x, 1.1, z);
+          const i = counts.block++;
+          write(blockBody.current, i, x, 1.1, z, false);
+          write(blockRim.current, i, x, 1.1, z, true);
         }
         continue;
       }
 
       if (entity.kind === "coin") {
-        write(coins.current, counts.coin++, x, 0.95, z, spin);
+        write(coins.current, counts.coin++, x, 0.95, z, false, spin);
         continue;
       }
 
+      tint.set(POWER_COLOUR[entity.power ?? "shield"]);
       write(
         powers.current,
         counts.power++,
         x,
         1.15 + Math.sin(world.time * 3 + entity.id) * 0.12,
         z,
+        false,
         spin,
-        new THREE.Color(POWER_COLOUR[entity.power ?? "shield"]),
+        tint,
       );
     }
-
-    void delta;
 
     const commit = (mesh: THREE.InstancedMesh | null, count: number) => {
       if (!mesh) return;
@@ -117,9 +121,12 @@ export function Entities() {
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     };
 
-    commit(barriers.current, counts.barrier);
-    commit(overheads.current, counts.overhead);
-    commit(blocks.current, counts.block);
+    commit(barrierBody.current, counts.barrier);
+    commit(barrierRim.current, counts.barrier);
+    commit(overheadBody.current, counts.overhead);
+    commit(overheadRim.current, counts.overhead);
+    commit(blockBody.current, counts.block);
+    commit(blockRim.current, counts.block);
     commit(coins.current, counts.coin);
     commit(powers.current, counts.power);
   });
@@ -128,58 +135,44 @@ export function Entities() {
 
   return (
     <group>
-      <instancedMesh ref={barriers} args={[undefined, undefined, MAX]} castShadow>
-        <boxGeometry args={[width, BARRIER_HEIGHT, 0.7]} />
-        <meshStandardMaterial
-          color="#ff2d6f"
-          emissive="#ff2d6f"
-          emissiveIntensity={0.7}
-          roughness={0.4}
-        />
+      {/* Jump this one. */}
+      <instancedMesh ref={barrierBody} args={[undefined, undefined, MAX]}>
+        <boxGeometry args={[width, BARRIER_HEIGHT, 0.6]} />
+        <meshLambertMaterial color="#2d0b1c" emissive="#5e1030" emissiveIntensity={0.42} />
+      </instancedMesh>
+      <instancedMesh ref={barrierRim} args={[undefined, undefined, MAX]}>
+        <boxGeometry args={[width, BARRIER_HEIGHT, 0.6]} />
+        <meshBasicMaterial color="#ff2d6f" side={THREE.BackSide} toneMapped={false} />
       </instancedMesh>
 
-      <instancedMesh ref={overheads} args={[undefined, undefined, MAX]} castShadow>
-        <boxGeometry args={[width, 1.8, 0.7]} />
-        <meshStandardMaterial
-          color="#ffb020"
-          emissive="#ffb020"
-          emissiveIntensity={0.6}
-          roughness={0.4}
-        />
+      {/* Slide under this one. */}
+      <instancedMesh ref={overheadBody} args={[undefined, undefined, MAX]}>
+        <boxGeometry args={[width, 1.8, 0.6]} />
+        <meshLambertMaterial color="#2e2206" emissive="#6b4a08" emissiveIntensity={0.42} />
+      </instancedMesh>
+      <instancedMesh ref={overheadRim} args={[undefined, undefined, MAX]}>
+        <boxGeometry args={[width, 1.8, 0.6]} />
+        <meshBasicMaterial color="#ffb020" side={THREE.BackSide} toneMapped={false} />
       </instancedMesh>
 
-      <instancedMesh ref={blocks} args={[undefined, undefined, MAX]} castShadow>
-        <boxGeometry args={[width, 2.2, 0.8]} />
-        <meshStandardMaterial
-          color="#8b5cf6"
-          emissive="#8b5cf6"
-          emissiveIntensity={0.5}
-          roughness={0.35}
-          metalness={0.3}
-        />
+      {/* Go round this one. */}
+      <instancedMesh ref={blockBody} args={[undefined, undefined, MAX]}>
+        <boxGeometry args={[width, 2.2, 0.7]} />
+        <meshLambertMaterial color="#20123a" emissive="#3f1d73" emissiveIntensity={0.45} />
+      </instancedMesh>
+      <instancedMesh ref={blockRim} args={[undefined, undefined, MAX]}>
+        <boxGeometry args={[width, 2.2, 0.7]} />
+        <meshBasicMaterial color="#a855f7" side={THREE.BackSide} toneMapped={false} />
       </instancedMesh>
 
       <instancedMesh ref={coins} args={[undefined, undefined, MAX]}>
-        <torusGeometry args={[0.32, 0.12, 8, 18]} />
-        <meshStandardMaterial
-          color="#ffd34d"
-          emissive="#ffb400"
-          emissiveIntensity={1.1}
-          metalness={0.7}
-          roughness={0.25}
-          toneMapped={false}
-        />
+        <torusGeometry args={[0.33, 0.1, 10, 22]} />
+        <meshBasicMaterial color="#ffc233" toneMapped={false} />
       </instancedMesh>
 
       <instancedMesh ref={powers} args={[undefined, undefined, MAX]}>
-        <octahedronGeometry args={[0.45, 0]} />
-        <meshStandardMaterial
-          emissive="#ffffff"
-          emissiveIntensity={0.55}
-          metalness={0.4}
-          roughness={0.2}
-          toneMapped={false}
-        />
+        <octahedronGeometry args={[0.46, 0]} />
+        <meshBasicMaterial toneMapped={false} />
       </instancedMesh>
     </group>
   );
