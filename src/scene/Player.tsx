@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useTexture } from "@react-three/drei";
 import * as THREE from "three";
@@ -50,7 +50,13 @@ export function Player() {
 
   const face = useTexture("/face.jpg");
 
-  useMemo(() => {
+  // An effect, not a memo. React is free to throw a useMemo cache away and
+  // run the callback again, and it is documented as being for computing a
+  // value rather than for reaching out and changing one; configuring the
+  // texture there happened to work only because the callback is idempotent.
+  // This runs before the first paint, which is early enough: R3F draws on
+  // the next animation frame, after commit.
+  useLayoutEffect(() => {
     face.colorSpace = THREE.SRGBColorSpace;
     face.offset.copy(FACE_OFFSET);
     face.repeat.copy(FACE_REPEAT);
