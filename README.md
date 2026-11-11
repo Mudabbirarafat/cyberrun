@@ -21,7 +21,7 @@ reads that world and moves meshes. It decides nothing.
 
 That split buys two things that are hard to get any other way.
 
-**It can be tested without a screen.** 32 tests run in about a second with no
+**It can be tested without a screen.** 59 tests run in about a second with no
 browser, no canvas and no mocking of WebGL. They are about the game rather
 than about React.
 
@@ -58,6 +58,59 @@ each:
 The second is the one that bites, and it is why `generateRow` takes the set of
 lanes you could be in *going into* a row and returns the set you can be in
 *coming out* of it.
+
+## Why there is a combo at all
+
+A flat ten points a coin gives you no reason to take a risk for one. Dodging
+early is always correct, the safe lane is always right, and the only thing
+that changes over a run is the number going up.
+
+So coins and near misses chain. Every link shortens nothing and adds one; the
+multiplier is a step function of the chain length rather than the length
+itself, because `x4` is a thing you can read at speed and `37 links` is not.
+Let the chain lapse for three and a half seconds and it drops. Crash and it
+drops with you - the multiplier is part of what a mistake costs, not just the
+run.
+
+A near miss is the other half of it, and the width is the whole design. The
+box that kills you is 1.37 units either side of an obstacle's centre. The next
+lane's centre is 2.4 away. The near-miss band is **1.92**, which sits between
+them on purpose: sitting safely one lane over earns nothing, because if it did
+every obstacle you ever passed would pay out. You have to be part of the way
+into the obstacle's lane, which only happens mid-change - so the reward is for
+dodging late, and dodging late is the thing that was previously strictly
+worse than dodging early.
+
+Barriers pay the same way vertically: clear one by less than 0.75 and it
+counts, sail over it and it does not. Overheads are deliberately excluded.
+The clearance while sliding is a constant, so counting it would not be
+rewarding skill, it would be paying you to press down.
+
+## Three goals at a time
+
+Missions are **not** part of the simulation. `step()` runs 120 times a second
+and knows nothing about them: a set is folded in once, when a run ends, as a
+pure function of what you had and what the run came to. That keeps the hot
+loop untouched and means the whole system can be tested by handing it numbers
+rather than by playing.
+
+A set is generated from its level number alone, so level 4 is the same three
+goals for everybody and a test can assert on them without pinning a snapshot
+of a random draw. Targets scale with the level and round to something a
+person would say — 900m, not 873m.
+
+Two scopes, and the distinction is the point. A `total` accumulates across
+runs; a `run` keeps the best single one, so "reach 900m in one run" cannot be
+satisfied by nine runs of a hundred metres. Every set is guaranteed one of
+each: left purely to chance the draw produced "collect 60 coins", "finish 5
+runs" and "pick up 5 power-ups" for level 1, which is three ways of saying
+*keep playing* and asks nothing of the run itself.
+
+Finish all three and the next set replaces them. Progress is kept in
+`localStorage` and checked on the way back in rather than trusted — whatever
+is in there was written by an older version of the code as far as this
+build knows, and a renamed field should cost you your progress, not the
+ability to load the game.
 
 ## What is measured
 
@@ -139,6 +192,11 @@ figure taken from a tab that is not in front is worth nothing.
 
 On a phone: swipe to move, tap to jump.
 
+Coins and near misses chain into a multiplier — it shows at the top of the
+screen once it is worth something, with a bar for how long you have to keep
+it. Dodge late to earn the near misses; see above for why that is the only
+way to earn them.
+
 Power-ups last seven seconds — a **shield** absorbs one hit, a **magnet**
 widens your reach for coins, **slow** takes the pace off. The high score is
 kept in `localStorage`, and the reads and writes are wrapped: a private window
@@ -158,7 +216,7 @@ browsers refuse to start one without a gesture.
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # 32 tests, no browser needed
+npm test           # 59 tests, no browser needed
 npm run build
 ```
 
@@ -170,7 +228,7 @@ src/game/          the simulation - no Three.js anywhere in here
   rng.ts           seeded, so a track can be replayed and tested
   generator.ts     rows, and the survivable/reachable guarantees
   world.ts         step(), collision, scoring, the fixed-step accumulator
-  *.test.ts        32 tests
+  *.test.ts        59 tests
 src/scene/         React Three Fiber - reads the world, decides nothing
 src/ui/            HUD and overlays, in DOM rather than in WebGL
 src/store.ts       the bridge: the world stays out of React state

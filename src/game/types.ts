@@ -22,6 +22,11 @@ export interface Entity {
   power?: PowerKind;
   /** Collected or already survived; kept until it is recycled. */
   spent: boolean;
+  /**
+   * The player is past it. Near misses are judged once, on the way out,
+   * because that is the only moment the whole pass is known.
+   */
+  passed: boolean;
 }
 
 export interface Player {
@@ -44,6 +49,11 @@ export type GameEvent =
   | "coin"
   | "power"
   | "shielded"
+  | "nearmiss"
+  /** The multiplier stepped up. */
+  | "combostep"
+  /** The chain ran out of time. A crash emits `crash`, not this. */
+  | "combobreak"
   | "crash";
 
 export interface World {
@@ -67,5 +77,18 @@ export interface World {
   shieldRemaining: number;
   magnetRemaining: number;
   slowRemaining: number;
+  /** Coins and near misses chained together, unbroken. */
+  combo: number;
+  /** Seconds left to extend the chain before it drops. */
+  comboRemaining: number;
+  /** Derived from `combo`, stored so the view does not recompute the rule. */
+  multiplier: number;
+  /** Points from coins and near misses, already multiplied when earned. */
+  bonus: number;
+  /** The longest chain this run, which outlives the chain itself. */
+  bestCombo: number;
+  nearMisses: number;
+  /** Power-ups taken this run, for the missions to count. */
+  powersTaken: number;
   events: GameEvent[];
 }

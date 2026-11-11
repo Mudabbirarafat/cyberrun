@@ -1,5 +1,12 @@
 import { create } from "zustand";
-import { HIGH_SCORE_KEY } from "./game/constants";
+import { HIGH_SCORE_KEY, MISSIONS_KEY } from "./game/constants";
+import {
+  MISSIONS_PER_SET,
+  applyRun,
+  createMissions,
+  type Mission,
+  type MissionState,
+} from "./game/missions";
 import type { GameEvent, Input, Status, World } from "./game/types";
 import { advance, applyInput, createWorld, drainEvents, startRun } from "./game/world";
 
@@ -41,6 +48,53 @@ function writeHighScore(score: number): void {
   }
 }
 
+/**
+ * Missions, which are kept rather than recomputed.
+ *
+ * Whatever comes back out of storage was written by an older version of this
+ * file as far as we know, so it is checked rather than trusted: a shape that
+ * does not match starts again at level one. Losing progress is bad; a game
+ * that will not load because a field was renamed is worse.
+ */
+function readMissions(): MissionState {
+  try {
+    const raw = localStorage.getItem(MISSIONS_KEY);
+    if (raw === null) return createMissions(1);
+    const parsed: unknown = JSON.parse(raw);
+    if (!isMissionState(parsed)) return createMissions(1);
+    return parsed;
+  } catch {
+    return createMissions(1);
+  }
+}
+
+function isMissionState(value: unknown): value is MissionState {
+  if (typeof value !== "object" || value === null) return false;
+  const state = value as Partial<MissionState>;
+  if (typeof state.level !== "number" || !Number.isFinite(state.level) || state.level < 1) {
+    return false;
+  }
+  if (!Array.isArray(state.missions) || state.missions.length !== MISSIONS_PER_SET) {
+    return false;
+  }
+  return state.missions.every((mission: Partial<Mission>) =>
+    typeof mission?.id === "string" &&
+    typeof mission.metric === "string" &&
+    (mission.scope === "run" || mission.scope === "total") &&
+    typeof mission.target === "number" &&
+    typeof mission.progress === "number" &&
+    typeof mission.done === "boolean",
+  );
+}
+
+function writeMissions(state: MissionState): void {
+  try {
+    localStorage.setItem(MISSIONS_KEY, JSON.stringify(state));
+  } catch {
+    // Same as the high score: the run still counts, it is just not kept.
+  }
+}
+
 export interface GameState {
   status: Status;
   score: number;
@@ -52,6 +106,18 @@ export interface GameState {
   magnet: boolean;
   slow: boolean;
   speed: number;
+  /**
+   * Steps rarely, so it belongs here. The seconds left on the chain do not:
+   * they change every step, and the HUD reads them straight off the world
+   * inside an animation frame rather than re-rendering React for a bar.
+   */
+  multiplier: number;
+  nearMisses: number;
+  bestCombo: number;
+  missions: MissionState;
+  /** What the run that just ended finished off, for the game-over panel. */
+  completedMissions: Mission[];
+  levelledUp: boolean;
 
   start: () => void;
   restart: () => void;
@@ -70,6 +136,12 @@ export const useGame = create<GameState>((set, get) => ({
   magnet: false,
   slow: false,
   speed: 0,
+  multiplier: 1,
+  nearMisses: 0,
+  bestCombo: 0,
+  missions: readMissions(),
+  completedMissions: [],
+  levelledUp: false,
 
   start: () => {
     startRun(world);
@@ -89,6 +161,13 @@ export const useGame = create<GameState>((set, get) => ({
       magnet: false,
       slow: false,
       speed: world.speed,
+      multiplier: 1,
+      nearMisses: 0,
+      bestCombo: 0,
+      // The missions themselves carry over; only the report of what the
+      // last run did is cleared.
+      completedMissions: [],
+      levelledUp: false,
     });
   },
 
@@ -111,7 +190,10 @@ export const useGame = create<GameState>((set, get) => ({
       previous.status !== world.status ||
       previous.shield !== shield ||
       previous.magnet !== magnet ||
-      previous.slow !== slow
+      previous.slow !== slow ||
+      previous.multiplier !== world.multiplier ||
+      previous.nearMisses !== world.nearMisses ||
+      previous.bestCombo !== world.bestCombo
     ) {
       const patch: Partial<GameState> = {
         status: world.status,
@@ -121,6 +203,9 @@ export const useGame = create<GameState>((set, get) => ({
         magnet,
         slow,
         speed: world.speed,
+        multiplier: world.multiplier,
+        nearMisses: world.nearMisses,
+        bestCombo: world.bestCombo,
       };
 
       if (world.status === "over" && previous.status !== "over") {
@@ -129,6 +214,22 @@ export const useGame = create<GameState>((set, get) => ({
           patch.beatBest = true;
           writeHighScore(world.score);
         }
+
+        // Missions are folded in once, here, rather than inside the step:
+        // the simulation runs 120 times a second and has no business
+        // knowing what a goal is.
+        const outcome = applyRun(previous.missions, {
+          coins: world.coins,
+          distance: world.distance,
+          nearMisses: world.nearMisses,
+          bestCombo: world.bestCombo,
+          score: world.score,
+          powers: world.powersTaken,
+        });
+        patch.missions = outcome.state;
+        patch.completedMissions = outcome.completed;
+        patch.levelledUp = outcome.levelled;
+        writeMissions(outcome.state);
       }
 
       set(patch);
