@@ -21,7 +21,7 @@ reads that world and moves meshes. It decides nothing.
 
 That split buys two things that are hard to get any other way.
 
-**It can be tested without a screen.** 44 tests run in about a second with no
+**It can be tested without a screen.** 59 tests run in about a second with no
 browser, no canvas and no mocking of WebGL. They are about the game rather
 than about React.
 
@@ -85,6 +85,32 @@ Barriers pay the same way vertically: clear one by less than 0.75 and it
 counts, sail over it and it does not. Overheads are deliberately excluded.
 The clearance while sliding is a constant, so counting it would not be
 rewarding skill, it would be paying you to press down.
+
+## Three goals at a time
+
+Missions are **not** part of the simulation. `step()` runs 120 times a second
+and knows nothing about them: a set is folded in once, when a run ends, as a
+pure function of what you had and what the run came to. That keeps the hot
+loop untouched and means the whole system can be tested by handing it numbers
+rather than by playing.
+
+A set is generated from its level number alone, so level 4 is the same three
+goals for everybody and a test can assert on them without pinning a snapshot
+of a random draw. Targets scale with the level and round to something a
+person would say — 900m, not 873m.
+
+Two scopes, and the distinction is the point. A `total` accumulates across
+runs; a `run` keeps the best single one, so "reach 900m in one run" cannot be
+satisfied by nine runs of a hundred metres. Every set is guaranteed one of
+each: left purely to chance the draw produced "collect 60 coins", "finish 5
+runs" and "pick up 5 power-ups" for level 1, which is three ways of saying
+*keep playing* and asks nothing of the run itself.
+
+Finish all three and the next set replaces them. Progress is kept in
+`localStorage` and checked on the way back in rather than trusted — whatever
+is in there was written by an older version of the code as far as this
+build knows, and a renamed field should cost you your progress, not the
+ability to load the game.
 
 ## What is measured
 
@@ -190,7 +216,7 @@ browsers refuse to start one without a gesture.
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # 44 tests, no browser needed
+npm test           # 59 tests, no browser needed
 npm run build
 ```
 
@@ -202,7 +228,7 @@ src/game/          the simulation - no Three.js anywhere in here
   rng.ts           seeded, so a track can be replayed and tested
   generator.ts     rows, and the survivable/reachable guarantees
   world.ts         step(), collision, scoring, the fixed-step accumulator
-  *.test.ts        44 tests
+  *.test.ts        59 tests
 src/scene/         React Three Fiber - reads the world, decides nothing
 src/ui/            HUD and overlays, in DOM rather than in WebGL
 src/store.ts       the bridge: the world stays out of React state

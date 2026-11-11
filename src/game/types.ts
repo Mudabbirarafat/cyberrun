@@ -88,5 +88,7 @@ export interface World {
   /** The longest chain this run, which outlives the chain itself. */
   bestCombo: number;
   nearMisses: number;
+  /** Power-ups taken this run, for the missions to count. */
+  powersTaken: number;
   events: GameEvent[];
 }

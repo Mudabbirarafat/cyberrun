@@ -98,6 +98,14 @@
     rgba(5, 6, 13, 0.88) 70%
   );
   padding: 20px;
+  /* The panels grew: the game-over one now carries three missions under the
+     score, and on a short window - a laptop in landscape, a phone with the
+     keyboard up - it was taller than the viewport with the Run again button
+     below the fold and no way to reach it. `place-items: center` cannot
+     scroll, so it only centres while there is room. */
+  overflow-y: auto;
+  align-content: safe center;
+  justify-items: center;
 }
 
 .panel {
@@ -336,5 +344,94 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   .combo {
     animation: none;
+  }
+}
+
+/* Missions, on the panels only. */
+.missions {
+  width: 100%;
+  margin: 18px 0 4px;
+  text-align: left;
+}
+
+.missions-head {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.42);
+  margin-bottom: 10px;
+}
+
+.missions ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.mission-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 5px;
+}
+
+.mission-label {
+  font-size: 0.86rem;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.mission-count {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
+}
+
+.mission-track {
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.mission-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #19e6ff, #7a5cff);
+  transition: width 0.45s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+/* A finished goal stops competing for attention: the text dims, and only the
+   bar stays bright, because that is the bit that says you did it. */
+.mission.done .mission-label {
+  color: rgba(255, 255, 255, 0.4);
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 255, 255, 0.25);
+}
+
+.mission.done .mission-count {
+  color: #4ade80;
+}
+
+.mission.done .mission-fill {
+  background: linear-gradient(90deg, #4ade80, #19e6ff);
+}
+
+.levelled {
+  margin: 14px 0 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #ffd84d;
+  text-shadow: 0 0 16px rgba(255, 216, 77, 0.45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mission-fill {
+    transition: none;
   }
 }

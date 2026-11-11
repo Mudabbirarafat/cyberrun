@@ -44,6 +44,7 @@ export function createWorld(seed: number = Date.now() >>> 0): World {
     bonus: 0,
     bestCombo: 0,
     nearMisses: 0,
+    powersTaken: 0,
     events: [],
   };
   fillTrack(world);
@@ -291,6 +292,7 @@ function resolveCollisions(world: World): void {
           world.slowRemaining = C.POWER_DURATION;
           break;
       }
+      world.powersTaken += 1;
       world.events.push("power");
     }
   }

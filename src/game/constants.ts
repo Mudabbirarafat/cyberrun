@@ -98,3 +98,4 @@ export const NEAR_MISS_CLEARANCE = 0.75;
 export const NEAR_MISS_SCORE = 25;
 
 export const HIGH_SCORE_KEY = "cyberrun.highScore";
+export const MISSIONS_KEY = "cyberrun.missions";

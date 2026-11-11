@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { COMBO_WINDOW } from "../game/constants";
+import { describe as describeMission } from "../game/missions";
 import { getWorld, useGame } from "../store";
 import "./hud.css";
 
@@ -80,6 +81,44 @@ function Score() {
   );
 }
 
+/**
+ * The three goals, and how far along they are.
+ *
+ * Shown on the panels rather than during a run: a goal is something you
+ * decide to chase before you start or after you stop, and a third bar on
+ * screen while you are dodging is one thing too many to read.
+ */
+function Missions() {
+  const missions = useGame((state) => state.missions);
+  const completed = useGame((state) => state.completedMissions);
+  const justDone = new Set(completed.map((mission) => mission.id));
+
+  return (
+    <div className="missions">
+      <div className="missions-head">Level {missions.level}</div>
+      <ul>
+        {missions.missions.map((mission) => {
+          const fraction = Math.min(1, mission.progress / mission.target);
+          const done = mission.done || justDone.has(mission.id);
+          return (
+            <li key={mission.id} className={done ? "mission done" : "mission"}>
+              <div className="mission-row">
+                <span className="mission-label">{describeMission(mission)}</span>
+                <span className="mission-count">
+                  {done ? "done" : `${Math.floor(mission.progress)}/${mission.target}`}
+                </span>
+              </div>
+              <div className="mission-track">
+                <div className="mission-fill" style={{ width: `${fraction * 100}%` }} />
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 function Ready() {
   return (
     <div className="overlay">
@@ -101,6 +140,7 @@ function Ready() {
           <li>Purple blocks fill the lane — go round</li>
         </ul>
         <p className="touch">On a phone: swipe to move, tap to jump.</p>
+        <Missions />
         <p className="prompt">Press anything to run</p>
       </div>
     </div>
@@ -114,6 +154,8 @@ function GameOver() {
   const beatBest = useGame((state) => state.beatBest);
   const bestCombo = useGame((state) => state.bestCombo);
   const nearMisses = useGame((state) => state.nearMisses);
+  const levelledUp = useGame((state) => state.levelledUp);
+  const missions = useGame((state) => state.missions);
   const restart = useGame((state) => state.restart);
 
   return (
@@ -140,6 +182,8 @@ function GameOver() {
             {nearMisses} near {nearMisses === 1 ? "miss" : "misses"}
           </span>
         </div>
+        {levelledUp && <p className="levelled">All three done — level {missions.level}</p>}
+        <Missions />
         <button type="button" onClick={restart} autoFocus>
           Run again
         </button>
