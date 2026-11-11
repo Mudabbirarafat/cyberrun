@@ -38,6 +38,12 @@ export function createWorld(seed: number = Date.now() >>> 0): World {
     shieldRemaining: 0,
     magnetRemaining: 0,
     slowRemaining: 0,
+    combo: 0,
+    comboRemaining: 0,
+    multiplier: 1,
+    bonus: 0,
+    bestCombo: 0,
+    nearMisses: 0,
     events: [],
   };
   fillTrack(world);
@@ -127,12 +133,19 @@ export function step(world: World): void {
   world.magnetRemaining = Math.max(0, world.magnetRemaining - dt);
   world.slowRemaining = Math.max(0, world.slowRemaining - dt);
 
+  if (world.comboRemaining > 0) {
+    world.comboRemaining = Math.max(0, world.comboRemaining - dt);
+    if (world.comboRemaining === 0) breakCombo(world, "combobreak");
+  }
+
   fillTrack(world);
   resolveCollisions(world);
   recycle(world);
 
-  world.score =
-    Math.floor(world.distance * C.DISTANCE_SCORE) + world.coins * C.COIN_SCORE;
+  // Distance plus what was earned, rather than distance plus a flat rate per
+  // coin: a coin picked up at x4 was worth four times as much at the moment
+  // it was taken, and re-deriving it from a total would lose that.
+  world.score = Math.floor(world.distance * C.DISTANCE_SCORE) + world.bonus;
 }
 
 /**
@@ -200,26 +213,55 @@ function resolveCollisions(world: World): void {
     const ex = C.LANE_X[entity.lane]!;
 
     if (entity.kind === "obstacle") {
+      // Everything is judged while the obstacle is level with the player.
+      // That is the only instant at which the gap is the real gap: a frame
+      // later the lane change has carried on and the jump has fallen.
       if (Math.abs(dz) > C.OBSTACLE_HALF_DEPTH + C.PLAYER_HALF_DEPTH) continue;
-      if (Math.abs(ex - player.x) > C.OBSTACLE_HALF_WIDTH + C.PLAYER_HALF_WIDTH)
+
+      const lateral = Math.abs(ex - player.x);
+      if (lateral <= C.OBSTACLE_HALF_WIDTH + C.PLAYER_HALF_WIDTH) {
+        let hit = true;
+        let clearance = 0;
+        if (entity.obstacle === "barrier") {
+          clearance = player.y - C.BARRIER_HEIGHT;
+          hit = clearance < 0;
+        } else if (entity.obstacle === "overhead") {
+          clearance = C.OVERHEAD_CLEARANCE - (player.y + height);
+          hit = clearance < 0;
+        }
+
+        if (hit) {
+          entity.spent = true;
+          entity.passed = true;
+          breakCombo(world, null);
+          if (world.shieldRemaining > 0) {
+            world.shieldRemaining = 0;
+            world.events.push("shielded");
+          } else {
+            world.status = "over";
+            world.events.push("crash");
+            return;
+          }
+          continue;
+        }
+
+        // Jumped it. Clearing by a mile is not a near miss; clearing by a
+        // hair is the whole point. Overheads are excluded on purpose: the
+        // clearance while sliding is a constant, so it would pay out on
+        // every slide rather than on anything done well.
+        if (!entity.passed) {
+          entity.passed = true;
+          if (entity.obstacle === "barrier" && clearance <= C.NEAR_MISS_CLEARANCE) {
+            registerNearMiss(world);
+          }
+        }
         continue;
-
-      let hit = true;
-      if (entity.obstacle === "barrier") {
-        hit = player.y < C.BARRIER_HEIGHT;
-      } else if (entity.obstacle === "overhead") {
-        hit = player.y + height > C.OVERHEAD_CLEARANCE;
       }
-      if (!hit) continue;
 
-      entity.spent = true;
-      if (world.shieldRemaining > 0) {
-        world.shieldRemaining = 0;
-        world.events.push("shielded");
-      } else {
-        world.status = "over";
-        world.events.push("crash");
-        return;
+      // A different lane, but close enough that it was a decision.
+      if (!entity.passed && lateral <= C.NEAR_MISS_HALF_WIDTH) {
+        entity.passed = true;
+        registerNearMiss(world);
       }
       continue;
     }
@@ -234,6 +276,8 @@ function resolveCollisions(world: World): void {
     entity.spent = true;
     if (entity.kind === "coin") {
       world.coins += 1;
+      world.bonus += C.COIN_SCORE * world.multiplier;
+      extendCombo(world);
       world.events.push("coin");
     } else {
       switch (entity.power) {
@@ -250,6 +294,49 @@ function resolveCollisions(world: World): void {
       world.events.push("power");
     }
   }
+}
+
+/**
+ * One more link in the chain.
+ *
+ * The multiplier is a step function of the chain length rather than the
+ * chain length itself, so it is legible: a player can see "x3" and know
+ * roughly what it is worth without counting coins.
+ */
+function extendCombo(world: World): void {
+  world.combo += 1;
+  world.comboRemaining = C.COMBO_WINDOW;
+  if (world.combo > world.bestCombo) world.bestCombo = world.combo;
+
+  const stepped = Math.min(
+    C.MAX_MULTIPLIER,
+    1 + Math.floor(world.combo / C.COMBO_PER_STEP),
+  );
+  if (stepped > world.multiplier) {
+    world.multiplier = stepped;
+    world.events.push("combostep");
+  }
+}
+
+/**
+ * Drop the chain.
+ *
+ * `bestCombo` deliberately survives: it is what the game-over panel reports,
+ * and a run's best moment should outlive the mistake that ended it.
+ */
+function breakCombo(world: World, event: "combobreak" | null): void {
+  if (world.combo === 0) return;
+  world.combo = 0;
+  world.comboRemaining = 0;
+  world.multiplier = 1;
+  if (event) world.events.push(event);
+}
+
+function registerNearMiss(world: World): void {
+  world.nearMisses += 1;
+  world.bonus += C.NEAR_MISS_SCORE * world.multiplier;
+  extendCombo(world);
+  world.events.push("nearmiss");
 }
 
 function recycle(world: World): void {

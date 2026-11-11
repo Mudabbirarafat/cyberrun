@@ -65,4 +65,36 @@ export const COIN_SCORE = 10;
 /** Score per world unit travelled. */
 export const DISTANCE_SCORE = 1;
 
+// Combo
+//
+// A flat 10 per coin gives you no reason to take a risk for one. The combo
+// is what turns a coin from a trinket into a decision: it is worth more when
+// you are already doing well, and a crash costs you the multiplier as well
+// as the run.
+/** Seconds of neither a coin nor a near miss before the chain is dropped. */
+export const COMBO_WINDOW = 3.5;
+/** Links per multiplier step. */
+export const COMBO_PER_STEP = 4;
+export const MAX_MULTIPLIER = 6;
+
+// Near misses
+//
+// Rewarding the gap rather than the collision is what gives a lane change a
+// reason to be late.
+//
+// The width sits between the box that kills you (1.37) and the next lane's
+// centre (2.4), deliberately below the latter: sitting safely one lane over
+// is not a near miss, and if it counted every obstacle you passed would pay
+// out. You have to be part way into the lane, which means mid-change.
+export const NEAR_MISS_HALF_WIDTH = OBSTACLE_HALF_WIDTH + PLAYER_HALF_WIDTH + 0.55;
+/**
+ * Clearing a barrier by less than this counts.
+ *
+ * Barriers only: a jump's height varies with when you pressed, so clearing
+ * one narrowly is a thing you did. An overhead's clearance while sliding is
+ * a constant, so rewarding it would just be paying you to slide.
+ */
+export const NEAR_MISS_CLEARANCE = 0.75;
+export const NEAR_MISS_SCORE = 25;
+
 export const HIGH_SCORE_KEY = "cyberrun.highScore";

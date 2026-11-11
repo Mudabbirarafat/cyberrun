@@ -271,3 +271,70 @@ kbd {
   transform: scale(1.75);
   transform-origin: 52% 26%;
 }
+
+/* The combo pill.
+   Centred under the score rather than beside it: it appears and disappears
+   mid-run, and anything that reflows the score while you are reading it is
+   worse than a little empty space when the chain is cold. */
+.combo {
+  position: absolute;
+  top: max(18px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  animation: combo-pop 0.26s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+.combo-x {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #ffd84d;
+  text-shadow: 0 0 18px rgba(255, 216, 77, 0.55);
+}
+
+.combo-track {
+  width: 96px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+
+/* Scaled rather than resized: a width animation is a layout every frame,
+   and this one is written to 60 times a second. */
+.combo-fill {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ffd84d, #ff8a3d);
+  transform-origin: left center;
+  transform: scaleX(1);
+}
+
+@keyframes combo-pop {
+  from {
+    transform: translateX(-50%) scale(0.72);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(-50%) scale(1);
+    opacity: 1;
+  }
+}
+
+.breakdown.subtle-row {
+  margin-top: 6px;
+  opacity: 0.62;
+  font-size: 0.82rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .combo {
+    animation: none;
+  }
+}

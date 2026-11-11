@@ -115,6 +115,22 @@ export function playEvent(event: GameEvent): void {
     case "shielded":
       tone({ type: "sawtooth", from: 900, to: 300, duration: 0.25, gain: 0.14 });
       return;
+    case "nearmiss":
+      // A breath past the ear: short, airy and quiet enough that a run full
+      // of them does not become a drum solo.
+      noise(0.13, 0.07);
+      tone({ type: "sine", from: 1500, to: 2400, duration: 0.1, gain: 0.05 });
+      return;
+    case "combostep":
+      // Up a fourth each time it fires, so stacking reads as climbing.
+      tone({ type: "triangle", from: 660, to: 990, duration: 0.12, gain: 0.11 });
+      tone({ type: "sine", from: 1320, to: 1980, duration: 0.14, gain: 0.07 }, 0.05);
+      return;
+    case "combobreak":
+      // Down, and under the coins: losing the chain should be noticed, not
+      // announced. A crash has its own noise and does not also play this.
+      tone({ type: "sine", from: 480, to: 180, duration: 0.22, gain: 0.07 });
+      return;
     case "crash":
       noise(0.45, 0.32);
       tone({ type: "sawtooth", from: 260, to: 50, duration: 0.5, gain: 0.2 });

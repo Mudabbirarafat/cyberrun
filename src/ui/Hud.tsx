@@ -1,4 +1,6 @@
-import { useGame } from "../store";
+import { useEffect, useRef } from "react";
+import { COMBO_WINDOW } from "../game/constants";
+import { getWorld, useGame } from "../store";
 import "./hud.css";
 
 /**
@@ -19,6 +21,45 @@ function Powers() {
       {shield && <span className="power power-shield">Shield</span>}
       {magnet && <span className="power power-magnet">Magnet</span>}
       {slow && <span className="power power-slow">Slow</span>}
+    </div>
+  );
+}
+
+/**
+ * The multiplier, and how long is left to keep it.
+ *
+ * The number comes from the store because it steps rarely. The bar does not:
+ * the seconds remaining change 120 times a second, and routing that through
+ * React to animate a width would re-render the HUD at the simulation's rate
+ * for one div. It is read off the world in an animation frame and written
+ * straight to the element instead.
+ */
+function Combo() {
+  const multiplier = useGame((state) => state.multiplier);
+  const bar = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (multiplier <= 1) return;
+    let frame = 0;
+    const paint = () => {
+      const left = Math.max(0, Math.min(1, getWorld().comboRemaining / COMBO_WINDOW));
+      if (bar.current) bar.current.style.transform = `scaleX(${left})`;
+      frame = requestAnimationFrame(paint);
+    };
+    frame = requestAnimationFrame(paint);
+    return () => cancelAnimationFrame(frame);
+  }, [multiplier]);
+
+  if (multiplier <= 1) return null;
+
+  return (
+    // `key` so the pop animation replays on every step up rather than only
+    // the first: React would otherwise keep the element and the class.
+    <div className="combo" key={multiplier} aria-live="off">
+      <span className="combo-x">&times;{multiplier}</span>
+      <div className="combo-track">
+        <div className="combo-fill" ref={bar} />
+      </div>
     </div>
   );
 }
@@ -71,6 +112,8 @@ function GameOver() {
   const coins = useGame((state) => state.coins);
   const highScore = useGame((state) => state.highScore);
   const beatBest = useGame((state) => state.beatBest);
+  const bestCombo = useGame((state) => state.bestCombo);
+  const nearMisses = useGame((state) => state.nearMisses);
   const restart = useGame((state) => state.restart);
 
   return (
@@ -87,6 +130,15 @@ function GameOver() {
         <div className="breakdown">
           <span>{coins} collected</span>
           <span>Best {highScore.toLocaleString()}</span>
+        </div>
+        {/* What the run was made of, rather than only what it came to.
+            A chain of 20 and nine near misses is a different run from the
+            same score made of distance alone. */}
+        <div className="breakdown subtle-row">
+          <span>Longest chain {bestCombo}</span>
+          <span>
+            {nearMisses} near {nearMisses === 1 ? "miss" : "misses"}
+          </span>
         </div>
         <button type="button" onClick={restart} autoFocus>
           Run again
@@ -105,6 +157,7 @@ export function Hud() {
       {status === "running" && (
         <>
           <Score />
+          <Combo />
           <Powers />
         </>
       )}

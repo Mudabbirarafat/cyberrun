@@ -75,6 +75,7 @@ export function generateRow(
       z,
       obstacle: pickObstacle(rng, d),
       spent: false,
+      passed: false,
     });
   }
 
@@ -88,6 +89,7 @@ export function generateRow(
       z,
       obstacle: chance(rng, 0.5) ? "barrier" : "overhead",
       spent: false,
+      passed: false,
     });
   }
 
@@ -112,6 +114,7 @@ export function generateRow(
         lane,
         z: z + i * 2.2,
         spent: false,
+        passed: false,
       });
     }
   }
@@ -124,6 +127,7 @@ export function generateRow(
       z: z + 1.1,
       power: pick(rng, POWERS),
       spent: false,
+      passed: false,
     });
   }
 

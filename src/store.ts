@@ -52,6 +52,14 @@ export interface GameState {
   magnet: boolean;
   slow: boolean;
   speed: number;
+  /**
+   * Steps rarely, so it belongs here. The seconds left on the chain do not:
+   * they change every step, and the HUD reads them straight off the world
+   * inside an animation frame rather than re-rendering React for a bar.
+   */
+  multiplier: number;
+  nearMisses: number;
+  bestCombo: number;
 
   start: () => void;
   restart: () => void;
@@ -70,6 +78,9 @@ export const useGame = create<GameState>((set, get) => ({
   magnet: false,
   slow: false,
   speed: 0,
+  multiplier: 1,
+  nearMisses: 0,
+  bestCombo: 0,
 
   start: () => {
     startRun(world);
@@ -89,6 +100,9 @@ export const useGame = create<GameState>((set, get) => ({
       magnet: false,
       slow: false,
       speed: world.speed,
+      multiplier: 1,
+      nearMisses: 0,
+      bestCombo: 0,
     });
   },
 
@@ -111,7 +125,10 @@ export const useGame = create<GameState>((set, get) => ({
       previous.status !== world.status ||
       previous.shield !== shield ||
       previous.magnet !== magnet ||
-      previous.slow !== slow
+      previous.slow !== slow ||
+      previous.multiplier !== world.multiplier ||
+      previous.nearMisses !== world.nearMisses ||
+      previous.bestCombo !== world.bestCombo
     ) {
       const patch: Partial<GameState> = {
         status: world.status,
@@ -121,6 +138,9 @@ export const useGame = create<GameState>((set, get) => ({
         magnet,
         slow,
         speed: world.speed,
+        multiplier: world.multiplier,
+        nearMisses: world.nearMisses,
+        bestCombo: world.bestCombo,
       };
 
       if (world.status === "over" && previous.status !== "over") {

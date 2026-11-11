@@ -22,6 +22,7 @@ function place(world: World, entity: Partial<Entity> & Pick<Entity, "kind">): En
     obstacle: entity.obstacle,
     power: entity.power,
     spent: false,
+    passed: false,
   };
   world.entities.push(full);
   return full;
@@ -344,5 +345,147 @@ describe("housekeeping", () => {
     run(world, 600);
     const furthest = Math.max(...world.entities.map((e) => e.z));
     expect(furthest).toBeGreaterThan(world.distance + C.SPAWN_AHEAD / 2);
+  });
+});
+
+describe("combo", () => {
+  /** Places `count` coins in the player's lane, two units apart. */
+  function coinRun(world: World, count: number): void {
+    for (let i = 0; i < count; i++) {
+      place(world, { kind: "coin", lane: 1, z: world.distance + 4 + i * 2 });
+    }
+    run(world, 4 + count * 2 + 2);
+  }
+
+  it("steps the multiplier every COMBO_PER_STEP links", () => {
+    const world = emptyWorld();
+    coinRun(world, C.COMBO_PER_STEP);
+    expect(world.coins).toBe(C.COMBO_PER_STEP);
+    expect(world.combo).toBe(C.COMBO_PER_STEP);
+    expect(world.multiplier).toBe(2);
+  });
+
+  it("caps the multiplier", () => {
+    const world = emptyWorld();
+    coinRun(world, C.COMBO_PER_STEP * (C.MAX_MULTIPLIER + 4));
+    expect(world.combo).toBeGreaterThan(C.COMBO_PER_STEP * C.MAX_MULTIPLIER);
+    expect(world.multiplier).toBe(C.MAX_MULTIPLIER);
+  });
+
+  it("pays a coin at the multiplier it was taken with, not the final one", () => {
+    const world = emptyWorld();
+    // The first COMBO_PER_STEP coins are taken at x1 - the fourth is what
+    // raises the multiplier, so it is itself still worth face value.
+    coinRun(world, C.COMBO_PER_STEP + 1);
+    expect(world.multiplier).toBe(2);
+    const expected = C.COIN_SCORE * C.COMBO_PER_STEP + C.COIN_SCORE * 2;
+    expect(world.bonus).toBe(expected);
+  });
+
+  it("drops the chain when nothing extends it in time, and says so", () => {
+    const world = emptyWorld();
+    coinRun(world, 2);
+    expect(world.combo).toBe(2);
+    drainEvents(world);
+
+    const steps = Math.ceil(C.COMBO_WINDOW / C.FIXED_DT) + 2;
+    for (let i = 0; i < steps; i++) step(world);
+
+    expect(world.combo).toBe(0);
+    expect(world.multiplier).toBe(1);
+    expect(drainEvents(world)).toContain("combobreak");
+  });
+
+  it("drops the chain on a crash, without reporting it as a timeout", () => {
+    const world = emptyWorld();
+    coinRun(world, 2);
+    drainEvents(world);
+
+    place(world, { kind: "obstacle", obstacle: "block", lane: 1, z: world.distance + 4 });
+    run(world, 10);
+
+    expect(world.status).toBe("over");
+    expect(world.combo).toBe(0);
+    const events = drainEvents(world);
+    expect(events).toContain("crash");
+    expect(events).not.toContain("combobreak");
+  });
+
+  it("keeps the best chain after it is broken", () => {
+    const world = emptyWorld();
+    coinRun(world, 5);
+    expect(world.bestCombo).toBe(5);
+    const steps = Math.ceil(C.COMBO_WINDOW / C.FIXED_DT) + 2;
+    for (let i = 0; i < steps; i++) step(world);
+    expect(world.combo).toBe(0);
+    expect(world.bestCombo).toBe(5);
+  });
+});
+
+describe("near misses", () => {
+  it("does not pay out for sitting safely in the next lane", () => {
+    const world = emptyWorld();
+    place(world, { kind: "obstacle", obstacle: "block", lane: 0, z: world.distance + 6 });
+    run(world, 14);
+    expect(world.status).toBe("running");
+    expect(world.nearMisses).toBe(0);
+  });
+
+  it("pays out when the player is part way into the obstacle's lane", () => {
+    const world = emptyWorld();
+    // Mid lane change: inside the near-miss band, outside the one that hits.
+    world.player.lane = 0;
+    world.player.x = -0.6;
+    place(world, { kind: "obstacle", obstacle: "block", lane: 0, z: world.distance + 0.2 });
+
+    step(world);
+    expect(world.status).toBe("running");
+    expect(world.nearMisses).toBe(1);
+    expect(world.combo).toBe(1);
+  });
+
+  it("counts one obstacle once, however many steps it is alongside for", () => {
+    const world = emptyWorld();
+    world.player.lane = 0;
+    world.player.x = -0.6;
+    place(world, { kind: "obstacle", obstacle: "block", lane: 0, z: world.distance + 0.2 });
+    for (let i = 0; i < 40; i++) step(world);
+    expect(world.nearMisses).toBe(1);
+  });
+
+  it("pays out for clearing a barrier by a hair", () => {
+    const world = emptyWorld();
+    world.player.posture = "jump";
+    world.player.y = C.BARRIER_HEIGHT + 0.3;
+    world.player.vy = 0;
+    place(world, { kind: "obstacle", obstacle: "barrier", lane: 1, z: world.distance + 0.2 });
+
+    step(world);
+    expect(world.status).toBe("running");
+    expect(world.nearMisses).toBe(1);
+  });
+
+  it("does not pay out for sailing over a barrier", () => {
+    const world = emptyWorld();
+    world.player.posture = "jump";
+    world.player.y = C.BARRIER_HEIGHT + C.NEAR_MISS_CLEARANCE + 0.5;
+    world.player.vy = 0;
+    place(world, { kind: "obstacle", obstacle: "barrier", lane: 1, z: world.distance + 0.2 });
+
+    step(world);
+    expect(world.status).toBe("running");
+    expect(world.nearMisses).toBe(0);
+  });
+
+  it("does not pay out for sliding under an overhead", () => {
+    // The clearance while sliding is a constant, so counting it would pay
+    // for every slide rather than for anything done well.
+    const world = emptyWorld();
+    applyInput(world, "slide");
+    place(world, { kind: "obstacle", obstacle: "overhead", lane: 1, z: world.distance + 0.2 });
+
+    step(world);
+    expect(world.status).toBe("running");
+    expect(world.nearMisses).toBe(0);
   });
 });
