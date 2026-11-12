@@ -35,6 +35,47 @@ function Powers() {
  * for one div. It is read off the world in an animation frame and written
  * straight to the element instead.
  */
+/**
+ * Mute, which exists because the game now talks.
+ *
+ * A fixed control rather than a key-only binding: a player who wants the
+ * voice to stop wants it to stop now, and hunting for the right letter
+ * while it is talking is not that.
+ */
+function SoundToggle() {
+  const muted = useGame((state) => state.muted);
+  const toggle = useGame((state) => state.toggleMuted);
+
+  return (
+    <button
+      type="button"
+      className="sound-toggle"
+      onClick={toggle}
+      aria-pressed={muted}
+      aria-label={muted ? "Unmute" : "Mute"}
+      title={muted ? "Unmute (M)" : "Mute (M)"}
+    >
+      {muted ? "🔇" : "🔊"}
+    </button>
+  );
+}
+
+function Paused() {
+  const toggle = useGame((state) => state.togglePaused);
+
+  return (
+    <div className="overlay">
+      <div className="panel">
+        <h2>Paused</h2>
+        <button type="button" onClick={toggle} autoFocus>
+          Resume
+        </button>
+        <p className="prompt subtle">or press any key</p>
+      </div>
+    </div>
+  );
+}
+
 function Combo() {
   const multiplier = useGame((state) => state.multiplier);
   const bar = useRef<HTMLDivElement>(null);
@@ -138,6 +179,9 @@ function Ready() {
             <kbd>↓</kbd> slide under the amber ones
           </li>
           <li>Purple blocks fill the lane — go round</li>
+          <li>
+            <kbd>Esc</kbd> pause · <kbd>M</kbd> mute
+          </li>
         </ul>
         <p className="touch">On a phone: swipe to move, tap to jump.</p>
         <Missions />
@@ -156,6 +200,7 @@ function GameOver() {
   const nearMisses = useGame((state) => state.nearMisses);
   const levelledUp = useGame((state) => state.levelledUp);
   const missions = useGame((state) => state.missions);
+  const crashLine = useGame((state) => state.crashLine);
   const restart = useGame((state) => state.restart);
 
   return (
@@ -169,6 +214,9 @@ function GameOver() {
         </div>
         <h2>{beatBest ? "New best" : "Wiped out"}</h2>
         <div className="final">{score.toLocaleString()}</div>
+        {/* Written as well as spoken. Most tabs are muted, and a joke that
+            only exists as audio is no joke at all on a silent one. */}
+        {crashLine && <p className="crash-line">{crashLine}</p>}
         <div className="breakdown">
           <span>{coins} collected</span>
           <span>Best {highScore.toLocaleString()}</span>
@@ -195,6 +243,7 @@ function GameOver() {
 
 export function Hud() {
   const status = useGame((state) => state.status);
+  const paused = useGame((state) => state.paused);
 
   return (
     <div className="hud">
@@ -206,7 +255,12 @@ export function Hud() {
         </>
       )}
       {status === "ready" && <Ready />}
+      {status === "running" && paused && <Paused />}
       {status === "over" && <GameOver />}
+      {/* Last, so it paints over the overlays. Muting matters most while
+          the game is talking at you, which is exactly when the game-over
+          panel is covering the screen. */}
+      <SoundToggle />
     </div>
   );
 }

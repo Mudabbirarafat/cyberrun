@@ -45,11 +45,32 @@ export function useControls(): void {
         restart();
         return;
       }
+      // A paused run takes no movement. Any of the normal keys resumes it,
+      // so the one thing a player tries - press something - works.
+      if (useGame.getState().paused) {
+        useGame.getState().togglePaused();
+        return;
+      }
       send(input);
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return;
+
+      // Checked before the movement keys, and deliberately not routed
+      // through `act`: "anything at all starts a run" would otherwise mean
+      // that muting on the title screen also starts the game.
+      if (event.code === "KeyM") {
+        event.preventDefault();
+        useGame.getState().toggleMuted();
+        return;
+      }
+      if (event.code === "Escape" || event.code === "KeyP") {
+        event.preventDefault();
+        useGame.getState().togglePaused();
+        return;
+      }
+
       const input = KEYS[event.code];
       if (!input) return;
       // Space and the arrows scroll the page otherwise, which during a game

@@ -21,7 +21,7 @@ reads that world and moves meshes. It decides nothing.
 
 That split buys two things that are hard to get any other way.
 
-**It can be tested without a screen.** 59 tests run in about a second with no
+**It can be tested without a screen.** 71 tests run in about a second with no
 browser, no canvas and no mocking of WebGL. They are about the game rather
 than about React.
 
@@ -112,6 +112,32 @@ is in there was written by an older version of the code as far as this
 build knows, and a renamed field should cost you your progress, not the
 ability to load the game.
 
+## The game talks, without shipping a voice
+
+Crashing plays a four-note descending sting and then the game says something
+about the run: *"You had a chain going and you threw it away."*
+
+It is not a sound clip. A meme sound is someone else's recording with
+someone else's licence on it, and a few hundred kilobytes of binary in a
+repository that otherwise has no asset pipeline at all. The browser already
+has `speechSynthesis`, so the game picks a line and the browser reads it —
+nothing to download, nothing to attribute, and funnier than a buzzer because
+the voice is doing its sincere best with material it does not understand.
+
+Choosing the line is kept apart from saying it, so the interesting half is a
+pure function of what the run came to: a four-second run, a long chain
+thrown away, six near misses and then a wall, a first-ever best. The roll is
+passed in rather than taken from `Math.random`, so a test can pin which line
+comes out, and the previous line is passed in too because hearing the same
+one twice running is what makes it stale.
+
+**The line is written on the panel as well as spoken.** Most tabs are muted,
+and a joke that only exists as audio is no joke at all on a silent one.
+
+Every line is about the run, never about the player — there is a test for
+that, because the distance between teasing and nagging is one sentence and
+it is easy to cross while writing jokes.
+
 ## What is measured
 
 Frame timing with the full effect stack running, 240 frames in the dev build
@@ -190,6 +216,12 @@ figure taken from a tab that is not in front is worth nothing.
 | `↓` / `S` | slide under the amber ones |
 | purple blocks | fill the lane — go round |
 
+`Esc` or `P` pauses — the world is simply not advanced, and the frame's time
+is dropped rather than banked, so unpausing does not pay back a minute of
+simulation in one step. `M` mutes, and the button in the corner does the same
+thing for anyone who would rather not hunt for a letter while the game is
+talking. The setting is remembered.
+
 On a phone: swipe to move, tap to jump.
 
 Coins and near misses chain into a multiplier — it shows at the top of the
@@ -216,7 +248,7 @@ browsers refuse to start one without a gesture.
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # 59 tests, no browser needed
+npm test           # 71 tests, no browser needed
 npm run build
 ```
 
@@ -228,7 +260,7 @@ src/game/          the simulation - no Three.js anywhere in here
   rng.ts           seeded, so a track can be replayed and tested
   generator.ts     rows, and the survivable/reachable guarantees
   world.ts         step(), collision, scoring, the fixed-step accumulator
-  *.test.ts        59 tests
+  *.test.ts        71 tests
 src/scene/         React Three Fiber - reads the world, decides nothing
 src/ui/            HUD and overlays, in DOM rather than in WebGL
 src/store.ts       the bridge: the world stays out of React state

@@ -435,3 +435,53 @@ kbd {
     transition: none;
   }
 }
+
+/* Mute. Bottom-left, away from the score and the power-ups, and the only
+   control on screen during a run - so it is small, dim until wanted, and
+   never on top of anything you need to read. */
+.sound-toggle {
+  position: absolute;
+  /* Above the overlays, which cover the whole screen and would otherwise
+     swallow both the pixels and the clicks. */
+  z-index: 2;
+  left: max(16px, env(safe-area-inset-left));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font-size: 1rem;
+  line-height: 1;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(8, 10, 20, 0.5);
+  color: #fff;
+  opacity: 0.45;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: opacity 0.18s, border-color 0.18s, transform 0.12s;
+}
+
+.sound-toggle:hover,
+.sound-toggle:focus-visible {
+  opacity: 1;
+  border-color: rgba(25, 230, 255, 0.5);
+}
+
+.sound-toggle:active {
+  transform: scale(0.94);
+}
+
+/* What the game says about the run. Quiet and italic: it is an aside, not
+   a headline, and it sits between the score and the breakdown. */
+.crash-line {
+  margin: 10px 0 2px;
+  font-size: 0.95rem;
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.66);
+  max-width: 34ch;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.45;
+}
