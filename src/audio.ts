@@ -32,10 +32,63 @@ export function unlockAudio(): void {
 
 export function setMuted(value: boolean): void {
   muted = value;
+  if (muted) stopSpeaking();
 }
 
 export function isMuted(): boolean {
   return muted;
+}
+
+/**
+ * The crash line, read out by the browser.
+ *
+ * This is the one "voice" in the game and it is not a recording. Shipping a
+ * meme clip would mean a few hundred kilobytes of someone else's audio with
+ * a licence attached to it; `speechSynthesis` is already in the browser,
+ * costs nothing to download and says whatever it is given.
+ *
+ * Everything here is defensive on purpose. The API is absent in some
+ * browsers, present but voiceless in others, and throws in a few. None of
+ * that is worth a broken game-over screen, so every failure is silence.
+ */
+export function speak(text: string): void {
+  if (muted || !text) return;
+  try {
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+
+    // A previous line still going is worse than no line: two voices over
+    // each other is noise, and the one you want is the newer one.
+    synth.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    // Slightly fast and slightly low. The default cadence reads like a
+    // railway announcement, which is funny once and tiresome after that.
+    utterance.rate = 1.08;
+    utterance.pitch = 0.92;
+    utterance.volume = 0.9;
+    synth.speak(utterance);
+  } catch {
+    // Silence is an acceptable outcome. A thrown error on the game-over
+    // screen is not.
+  }
+}
+
+export function stopSpeaking(): void {
+  try {
+    window.speechSynthesis?.cancel();
+  } catch {
+    // Nothing to do; it was not speaking.
+  }
+}
+
+/** Whether this browser can say anything at all. */
+export function canSpeak(): boolean {
+  try {
+    return typeof window !== "undefined" && "speechSynthesis" in window;
+  } catch {
+    return false;
+  }
 }
 
 interface Tone {
@@ -134,6 +187,13 @@ export function playEvent(event: GameEvent): void {
     case "crash":
       noise(0.45, 0.32);
       tone({ type: "sawtooth", from: 260, to: 50, duration: 0.5, gain: 0.2 });
+      // Four descending notes with a slide on the last - the shape of the
+      // trombone everyone knows, built from oscillators rather than lifted
+      // from a clip. It sits under the spoken line, which starts later.
+      tone({ type: "triangle", from: 392, to: 392, duration: 0.17, gain: 0.12 }, 0.18);
+      tone({ type: "triangle", from: 349, to: 349, duration: 0.17, gain: 0.12 }, 0.36);
+      tone({ type: "triangle", from: 330, to: 330, duration: 0.17, gain: 0.12 }, 0.54);
+      tone({ type: "triangle", from: 311, to: 196, duration: 0.5, gain: 0.14 }, 0.72);
       return;
   }
 }

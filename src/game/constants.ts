@@ -99,3 +99,4 @@ export const NEAR_MISS_SCORE = 25;
 
 export const HIGH_SCORE_KEY = "cyberrun.highScore";
 export const MISSIONS_KEY = "cyberrun.missions";
+export const MUTED_KEY = "cyberrun.muted";

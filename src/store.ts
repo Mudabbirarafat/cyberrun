@@ -1,5 +1,7 @@
 import { create } from "zustand";
-import { HIGH_SCORE_KEY, MISSIONS_KEY } from "./game/constants";
+import { setMuted, speak, stopSpeaking } from "./audio";
+import { HIGH_SCORE_KEY, MISSIONS_KEY, MUTED_KEY } from "./game/constants";
+import { commentate } from "./game/commentary";
 import {
   MISSIONS_PER_SET,
   applyRun,
@@ -95,6 +97,36 @@ function writeMissions(state: MissionState): void {
   }
 }
 
+function readMuted(): boolean {
+  try {
+    return localStorage.getItem(MUTED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeMuted(value: boolean): void {
+  try {
+    localStorage.setItem(MUTED_KEY, value ? "1" : "0");
+  } catch {
+    // Not worth a failed run.
+  }
+}
+
+/**
+ * The last thing said, so the next crash does not repeat it.
+ *
+ * Outside the store because nothing renders it: it only exists to be
+ * compared against, and putting it in state would be a re-render for a
+ * string nobody reads.
+ */
+let lastLine = "";
+
+// The stored preference has to reach the audio module, not just the store:
+// the store holds what the button shows, `audio.ts` holds what actually
+// plays. Without this a muted reload is silent in the UI and loud in fact.
+setMuted(readMuted());
+
 export interface GameState {
   status: Status;
   score: number;
@@ -118,10 +150,21 @@ export interface GameState {
   /** What the run that just ended finished off, for the game-over panel. */
   completedMissions: Mission[];
   levelledUp: boolean;
+  /** What the game said about the last run. Shown as well as spoken. */
+  crashLine: string;
+  muted: boolean;
+  /**
+   * Held outside the simulation. The world has no idea it is paused: the
+   * tick simply stops being called, which is the same thing from its point
+   * of view as a browser tab that stopped painting.
+   */
+  paused: boolean;
 
   start: () => void;
   restart: () => void;
   send: (input: Input) => void;
+  toggleMuted: () => void;
+  togglePaused: () => void;
   /** Advances the simulation and returns anything worth making a noise about. */
   tick: (frameTime: number) => GameEvent[];
 }
@@ -142,6 +185,9 @@ export const useGame = create<GameState>((set, get) => ({
   missions: readMissions(),
   completedMissions: [],
   levelledUp: false,
+  crashLine: "",
+  muted: readMuted(),
+  paused: false,
 
   start: () => {
     startRun(world);
@@ -168,6 +214,8 @@ export const useGame = create<GameState>((set, get) => ({
       // last run did is cleared.
       completedMissions: [],
       levelledUp: false,
+      crashLine: "",
+      paused: false,
     });
   },
 
@@ -175,7 +223,28 @@ export const useGame = create<GameState>((set, get) => ({
     applyInput(world, input);
   },
 
+  toggleMuted: () => {
+    const muted = !get().muted;
+    setMuted(muted);
+    writeMuted(muted);
+    set({ muted });
+  },
+
+  togglePaused: () => {
+    // Only a run in progress can be paused. Pausing the game-over screen
+    // would be a way to get stuck behind an overlay with no way out.
+    if (get().status !== "running") return;
+    const paused = !get().paused;
+    if (paused) stopSpeaking();
+    set({ paused });
+  },
+
   tick: (frameTime) => {
+    // Paused: the world is simply not advanced. The frame's time is dropped
+    // rather than banked, so unpausing does not pay back a minute of
+    // simulation in one step and teleport the runner through a wall.
+    if (get().paused) return [];
+
     carry = advance(world, frameTime, carry);
     const events = drainEvents(world);
     const previous = get();
@@ -230,6 +299,27 @@ export const useGame = create<GameState>((set, get) => ({
         patch.completedMissions = outcome.completed;
         patch.levelledUp = outcome.levelled;
         writeMissions(outcome.state);
+
+        // Chosen here, where the run's numbers are, and shown as well as
+        // spoken: a line that only exists as audio is no line at all on a
+        // muted tab, and most tabs are muted.
+        const line = commentate(
+          {
+            score: world.score,
+            distance: world.distance,
+            coins: world.coins,
+            bestCombo: world.bestCombo,
+            nearMisses: world.nearMisses,
+            beatBest: Boolean(patch.beatBest),
+          },
+          Math.random(),
+          lastLine,
+        );
+        lastLine = line;
+        patch.crashLine = line;
+        // Behind the crash and the trombone, which run about three quarters
+        // of a second.
+        window.setTimeout(() => speak(line), 850);
       }
 
       set(patch);
