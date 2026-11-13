@@ -2,9 +2,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useAnimations, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
-import { LANE_X, PLAYER_RUN_HEIGHT, START_SPEED } from "../game/constants";
+import { LANE_X, MAX_SPEED, PLAYER_RUN_HEIGHT, START_SPEED } from "../game/constants";
 import { getWorld } from "../store";
-import { buildSlideClip } from "./slideClip";
+import { buildCrouchClip, buildSlideClip, buildSprintClip } from "./clips";
 
 /**
  * The runner: a rigged character with real skeletal animation.
@@ -33,9 +33,17 @@ const MODEL = "/runner.glb";
  * clip's playback rate follows the world's speed. Left alone, a runner at
  * full pelt looks like they are being towed.
  */
-const CLIP_SPEED = START_SPEED;
-const MIN_RATE = 0.75;
-const MAX_RATE = 2.1;
+// Deliberately below START_SPEED, so the clip is already running faster
+// than it was authored at the moment the game begins. At 1x the cycle is
+// 0.667s - about a stride and a half a second, which is a jog, and against
+// a city going past at eleven units a second it reads as someone who does
+// not much care whether they make it.
+const CLIP_SPEED = 6.4;
+/** 0 at START_SPEED, 1 at MAX_SPEED. How hard the sprint lean is applied. */
+const paceOf = (speed: number) =>
+  Math.min(1, Math.max(0, (speed - START_SPEED) / (MAX_SPEED - START_SPEED)));
+const MIN_RATE = 1.35;
+const MAX_RATE = 2.75;
 
 /** How long a change of clip takes to blend. Short: this is a fast game. */
 const FADE = 0.18;
@@ -56,7 +64,12 @@ export function Player() {
   // `slideClip.ts` - so it goes through the same mixer and cross-fades like
   // any other clip.
   const clips = useMemo(
-    () => [...animations, buildSlideClip(model)],
+    () => [
+      ...animations,
+      buildSlideClip(model),
+      buildSprintClip(model),
+      buildCrouchClip(model),
+    ],
     [animations, model],
   );
 
@@ -96,10 +109,25 @@ export function Player() {
   }, [model]);
 
   useEffect(() => {
-    const run = actions.run;
-    if (run) {
-      run.reset().setLoop(THREE.LoopRepeat, Infinity).play();
+    actions.run?.reset().setLoop(THREE.LoopRepeat, Infinity).play();
+
+    // The two additive layers run permanently at zero weight. Starting and
+    // stopping them would mean a fade every time the pace changed or a
+    // landing happened; leaving them playing makes the weight the only
+    // thing that moves, which is one number per frame.
+    for (const name of ["sprint", "crouch"] as const) {
+      const action = actions[name];
+      if (!action) continue;
+      action.blendMode = THREE.AdditiveAnimationBlendMode;
+      action.setLoop(THREE.LoopRepeat, Infinity);
+      action.setEffectiveWeight(0);
+      action.play();
+      // Held at the end of the one-second ramp: these are poses, not
+      // animations, and the weight is what animates them.
+      action.time = 1;
+      action.paused = true;
     }
+
     const snapshot = Object.values(actions);
     return () => {
       for (const action of snapshot) action?.stop();
@@ -108,6 +136,10 @@ export function Player() {
 
   /** Which clip is on screen, so a change is a cross-fade and not a cut. */
   const current = useRef<string>("run");
+  /** Airborne last frame, so a landing can be noticed without the sim. */
+  const airborne = useRef(false);
+  /** Spikes to 1 on landing and decays, driving the crouch layer. */
+  const landing = useRef(0);
 
   useFrame((_, delta) => {
     const world = getWorld();
@@ -182,6 +214,31 @@ export function Player() {
         THREE.MathUtils.clamp(world.speed / CLIP_SPEED, MIN_RATE, MAX_RATE),
       );
     }
+
+    // Landing. The simulation does not announce it - it does not need to -
+    // so the posture's own fall from "jump" is the signal.
+    const inAir = player.posture === "jump";
+    if (airborne.current && !inAir && world.status === "running") landing.current = 1;
+    airborne.current = inAir;
+    landing.current = Math.max(0, landing.current - delta * 4.5);
+
+    // The two additive layers. Sprint follows the pace; the crouch is a
+    // spike that decays. Neither is allowed over a slide, which is already
+    // a full-body pose and does not want a lean added to it.
+    const sprint = actions.sprint;
+    if (sprint) {
+      // Not zero at the start. The first stride of a run should already
+      // look like someone committing to it; the pace then takes it the rest
+      // of the way. A lean that only arrives at top speed arrives two
+      // minutes into a game most people lose in thirty seconds.
+      const wantLean =
+        sliding || world.status !== "running" ? 0 : 0.45 + 0.55 * paceOf(world.speed);
+      sprint.setEffectiveWeight(
+        sprint.getEffectiveWeight() + (wantLean - sprint.getEffectiveWeight()) * Math.min(1, delta * 3),
+      );
+    }
+    const crouch = actions.crouch;
+    if (crouch) crouch.setEffectiveWeight(sliding ? 0 : landing.current);
 
     if (shield.current) {
       shield.current.visible = world.shieldRemaining > 0;

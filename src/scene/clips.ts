@@ -1,17 +1,28 @@
 import * as THREE from "three";
 
 /**
- * A slide, authored on the rig in code because the pack does not ship one.
+ * The animations the pack does not ship, authored on its own rig.
  *
- * Kenney's character comes with idle, run and jump. Everything else about
- * this game is procedural, so rather than download a second pack and gamble
- * on two skeletons matching, the slide is a handful of bone rotations keyed
- * into an `AnimationClip` at load time. It costs no bytes and it blends
- * through the same mixer as the clips that were exported.
+ * Kenney's character comes with idle, run and jump. Rather than download a
+ * second pack and gamble on two skeletons matching, the rig already loaded
+ * gets posed: a slide, a sprint lean and a landing crouch, built as
+ * `AnimationClip`s when the model loads. They cost no bytes and they go
+ * through the same mixer as the exported clips.
  *
  * Rotations are **relative to the bind pose**. A bone's rest orientation is
  * part of how the character was modelled; writing absolute quaternions would
  * throw that away and fold the figure into a shape the artist never made.
+ *
+ * Two facts about this rig, both learned by getting them wrong and looking:
+ * positive X *raises* an arm rather than lowering it, and the bind pose is a
+ * T - so bringing the arms in to the body is a large Z rotation, not a small
+ * one.
+ *
+ * The slide replaces the base clip. The sprint and the crouch are
+ * **additive**: they are deltas layered on top of whatever is already
+ * playing, so a sprint lean does not have to contain a run cycle and a
+ * landing dip does not have to fight the state machine for control of the
+ * legs.
  */
 
 /** Bone, and how far to turn it from rest, in radians. */
@@ -111,4 +122,85 @@ export function buildSlideClip(root: THREE.Object3D, name = "slide"): THREE.Anim
   }
 
   return new THREE.AnimationClip(name, DURATION, tracks);
+}
+
+/**
+ * Leaning into it, layered over the run.
+ *
+ * The chest drops and the head comes up, which is the shape of someone
+ * chasing rather than jogging. Applied with a weight that follows the
+ * world's speed, so the posture changes over a run rather than being a
+ * setting.
+ */
+const SPRINT: Pose = {
+  Hips: [0.2, 0, 0],
+  Spine: [0.32, 0, 0],
+  Chest: [0.22, 0, 0],
+  // The neck undoes most of the chest, or the runner ends up studying the
+  // tarmac rather than the lane ahead.
+  Neck: [-0.38, 0, 0],
+  Head: [-0.26, 0, 0],
+  LeftArm: [0, 0, -0.3],
+  LeftForeArm: [0, 0, -0.5],
+  RightArm: [0, 0, 0.3],
+  RightForeArm: [0, 0, 0.5],
+};
+
+/**
+ * Absorbing a landing, layered over the run for a quarter of a second.
+ *
+ * Coming out of a jump straight back into a full stride is the single
+ * thing that most makes a character look weightless. The knees take it.
+ */
+const CROUCH: Pose = {
+  Hips: [0.2, 0, 0],
+  Spine: [0.16, 0, 0],
+  Chest: [0.1, 0, 0],
+  Neck: [-0.2, 0, 0],
+  LeftUpLeg: [-0.3, 0, 0],
+  LeftLeg: [0.55, 0, 0],
+  RightUpLeg: [-0.3, 0, 0],
+  RightLeg: [0.55, 0, 0],
+  LeftArm: [0, 0, -0.3],
+  RightArm: [0, 0, 0.3],
+};
+
+/**
+ * An additive clip: the pose as a delta from the bind pose.
+ *
+ * `makeClipAdditive` subtracts the clip's own first frame from every other
+ * frame, so frame zero has to *be* the rest pose. Build it from one frame of
+ * nothing and one frame of the pose, and what comes out is the difference -
+ * which is the only thing an additive layer should carry.
+ */
+function additiveFrom(root: THREE.Object3D, pose: Pose, name: string): THREE.AnimationClip {
+  const tracks: THREE.KeyframeTrack[] = [];
+
+  for (const [bone, turn] of Object.entries(pose)) {
+    const target = root.getObjectByName(bone);
+    if (!target) continue;
+
+    const rest = target.quaternion.clone();
+    tracks.push(
+      new THREE.QuaternionKeyframeTrack(
+        `${target.name}.quaternion`,
+        [0, 1],
+        [...quaternionFor(rest, [0, 0, 0]), ...quaternionFor(rest, turn)],
+      ),
+    );
+  }
+
+  const clip = new THREE.AnimationClip(name, 1, tracks);
+  THREE.AnimationUtils.makeClipAdditive(clip);
+  return clip;
+}
+
+/** The sprint lean, as an additive layer. Weight it by pace. */
+export function buildSprintClip(root: THREE.Object3D, name = "sprint"): THREE.AnimationClip {
+  return additiveFrom(root, SPRINT, name);
+}
+
+/** The landing dip, as an additive layer. Spike the weight, then decay it. */
+export function buildCrouchClip(root: THREE.Object3D, name = "crouch"): THREE.AnimationClip {
+  return additiveFrom(root, CROUCH, name);
 }

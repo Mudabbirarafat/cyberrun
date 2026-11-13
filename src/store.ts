@@ -317,9 +317,12 @@ export const useGame = create<GameState>((set, get) => ({
         );
         lastLine = line;
         patch.crashLine = line;
-        // Behind the crash and the trombone, which run about three quarters
-        // of a second.
-        window.setTimeout(() => speak(line), 850);
+        // Just behind the impact, not behind the whole sting. 850ms put the
+        // line most of a second after the thing it was reacting to, which
+        // reads as a delayed reaction rather than a reaction. It overlaps
+        // the tail of the trombone now, which is what a person interrupting
+        // actually sounds like.
+        window.setTimeout(() => speak(line), 380);
       }
 
       set(patch);
