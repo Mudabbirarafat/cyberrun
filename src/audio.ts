@@ -190,10 +190,10 @@ export function playEvent(event: GameEvent): void {
       // Four descending notes with a slide on the last - the shape of the
       // trombone everyone knows, built from oscillators rather than lifted
       // from a clip. It sits under the spoken line, which starts later.
-      tone({ type: "triangle", from: 392, to: 392, duration: 0.17, gain: 0.12 }, 0.18);
-      tone({ type: "triangle", from: 349, to: 349, duration: 0.17, gain: 0.12 }, 0.36);
-      tone({ type: "triangle", from: 330, to: 330, duration: 0.17, gain: 0.12 }, 0.54);
-      tone({ type: "triangle", from: 311, to: 196, duration: 0.5, gain: 0.14 }, 0.72);
+      tone({ type: "triangle", from: 392, to: 392, duration: 0.12, gain: 0.12 }, 0.12);
+      tone({ type: "triangle", from: 349, to: 349, duration: 0.12, gain: 0.12 }, 0.25);
+      tone({ type: "triangle", from: 330, to: 330, duration: 0.12, gain: 0.12 }, 0.38);
+      tone({ type: "triangle", from: 311, to: 196, duration: 0.42, gain: 0.13 }, 0.51);
       return;
   }
 }

@@ -173,9 +173,10 @@ you stay the same thing, and swapping the character needs no new number. The
 run clip's playback rate follows the world's speed — left alone, a runner at
 full pelt looks like they are being towed.
 
-**The pack has no slide, so the slide is keyed onto the rig in code.**
-`slideClip.ts` builds an `AnimationClip` at load time from about fifteen bone
-rotations — hips reclined, lead leg out, trailing knee folded under, arms
+**The pack ships three clips; the game has six.** `clips.ts` builds the
+others on the rig at load time.
+
+The slide is a full-body pose built from about fifteen bone rotations — hips reclined, lead leg out, trailing knee folded under, arms
 swept back, head counter-rotated so the runner is still looking where they
 are going. It blends through the same mixer as the exported clips and costs
 no bytes. Rather than download a second pack and gamble on two skeletons
@@ -198,6 +199,32 @@ posed skeleton is already most of the way down, and squashing it by another
 work. The silhouette during a slide is therefore *close to* the collision box
 rather than equal to it. The box is still what the overhead check uses, so
 this is a question of how it looks, not of what you get away with.
+
+**Sprint and the landing crouch are additive layers**, not clips of their
+own. An additive clip carries only the *difference* from the bind pose, so a
+sprint lean does not have to contain a run cycle and a landing dip does not
+have to fight the state machine for control of the legs: both sit on top of
+whatever is already playing and the only thing that moves is a weight.
+
+- **Sprint** follows the pace — chest down, head up, elbows in — and it does
+  not start at zero. The first stride of a run should already look like
+  somebody committing to it; a lean that only arrives at top speed arrives
+  two minutes into a game most people lose in thirty seconds.
+- **Crouch** spikes on landing and decays over about a fifth of a second.
+  The simulation never announces a landing and does not need to: the
+  posture's own fall out of `jump` is the signal. Coming out of a jump
+  straight back into a full stride is the single thing that most makes a
+  character look weightless.
+
+Both are built with `makeClipAdditive`, which subtracts a clip's first frame
+from the rest — so the clip is authored as one frame of nothing and one
+frame of the pose, and what survives is the delta.
+
+**The run plays faster than it was authored.** At 1x the cycle is 0.667
+seconds, about a stride and a half a second, and against a city going past at
+eleven units a second that reads as someone who does not much care whether
+they make it. The rate is tied to the world's speed with a floor well above
+1x.
 
 ## What is measured
 
