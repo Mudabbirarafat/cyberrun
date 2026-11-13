@@ -173,10 +173,31 @@ you stay the same thing, and swapping the character needs no new number. The
 run clip's playback rate follows the world's speed — left alone, a runner at
 full pelt looks like they are being towed.
 
-**There is no slide clip in the pack.** The slide is still the whole figure
-squashed to the collision height and pitched forward, which at ankle height
-reads as a dive. That is a compromise and it is better to write it down than
-to let you wonder why the legs keep running.
+**The pack has no slide, so the slide is keyed onto the rig in code.**
+`slideClip.ts` builds an `AnimationClip` at load time from about fifteen bone
+rotations — hips reclined, lead leg out, trailing knee folded under, arms
+swept back, head counter-rotated so the runner is still looking where they
+are going. It blends through the same mixer as the exported clips and costs
+no bytes. Rather than download a second pack and gamble on two skeletons
+matching, the rig that is already here gets posed.
+
+Every rotation is **relative to the bind pose**. A bone's rest orientation is
+part of how the character was modelled, and writing absolute quaternions
+throws that away. Two attempts were wrong before the third looked right, both
+because of assumptions about the rig that only a screenshot could settle: on
+this skeleton positive X *raises* an arm rather than lowering it, and the
+bind pose is a T, so bringing the arms down to the body is a large Z rotation
+rather than a small one. Until that was fixed the slide read as someone
+falling over backwards with their arms out.
+
+One compromise, written down rather than hidden: the figure used to be
+squashed by the exact ratio of the two collision heights, which made the
+drawn height and the collision height the same number by construction. A
+posed skeleton is already most of the way down, and squashing it by another
+53% on top made a pancake, so the scale is now a nudge and the pose does the
+work. The silhouette during a slide is therefore *close to* the collision box
+rather than equal to it. The box is still what the overhead check uses, so
+this is a question of how it looks, not of what you get away with.
 
 ## What is measured
 

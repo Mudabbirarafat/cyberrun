@@ -2,8 +2,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useAnimations, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
-import { LANE_X, PLAYER_RUN_HEIGHT, PLAYER_SLIDE_HEIGHT, START_SPEED } from "../game/constants";
+import { LANE_X, PLAYER_RUN_HEIGHT, START_SPEED } from "../game/constants";
 import { getWorld } from "../store";
+import { buildSlideClip } from "./slideClip";
 
 /**
  * The runner: a rigged character with real skeletal animation.
@@ -45,11 +46,21 @@ export function Player() {
   const shield = useRef<THREE.Mesh>(null);
 
   const { scene, animations } = useGLTF(MODEL);
-  const { actions } = useAnimations(animations, rig);
 
   // One instance, so the loaded scene is used directly rather than cloned.
   // `useGLTF` caches by URL and this is the only component that asks for it.
   const model = useMemo(() => scene, [scene]);
+
+  // The pack ships idle, run and jump. The slide is keyed onto the same rig
+  // at load time rather than downloaded from somewhere else - see
+  // `slideClip.ts` - so it goes through the same mixer and cross-fades like
+  // any other clip.
+  const clips = useMemo(
+    () => [...animations, buildSlideClip(model)],
+    [animations, model],
+  );
+
+  const { actions } = useAnimations(clips, rig);
 
   useLayoutEffect(() => {
     model.traverse((child) => {
@@ -107,8 +118,19 @@ export function Player() {
     root.current.position.y = player.y;
 
     const sliding = player.posture === "slide";
-    const height = sliding ? PLAYER_SLIDE_HEIGHT : PLAYER_RUN_HEIGHT;
-    const squash = height / PLAYER_RUN_HEIGHT;
+
+    // The box figure used to be squashed by the full ratio of the two
+    // collision heights, which made the drawn height and the collision
+    // height the same number by construction. A posed skeleton already
+    // brings the body most of the way down, and squashing it by another
+    // 53% on top turned the slide into a pancake. So the scale is now a
+    // nudge and the pose does the work.
+    //
+    // What that costs: the silhouette during a slide is close to the
+    // collision box rather than equal to it. The box is still the authority
+    // - PLAYER_SLIDE_HEIGHT is what the overhead check uses - so this is a
+    // question of how it looks, not of what you get away with.
+    const squash = sliding ? 0.86 : 1;
     root.current.scale.y += (squash - root.current.scale.y) * Math.min(1, delta * 18);
 
     // Leaning into a lane change, tipping forward in the air, diving on a
@@ -116,7 +138,9 @@ export function Player() {
     const targetX = LANE_X[player.lane] ?? 0;
     const lean = THREE.MathUtils.clamp((player.x - targetX) * -0.4, -0.45, 0.45);
     root.current.rotation.z = lean;
-    const pitch = sliding ? -0.55 : player.posture === "jump" ? -0.15 : 0;
+    // Less pitch than before: the slide clip now does most of the leaning,
+    // and stacking the two tipped the runner onto their back.
+    const pitch = sliding ? -0.18 : player.posture === "jump" ? -0.15 : 0;
     root.current.rotation.x += (pitch - root.current.rotation.x) * Math.min(1, delta * 14);
 
     // At the end of a run the figure turns to face the camera. The rest of
@@ -124,10 +148,14 @@ export function Player() {
     const facing = world.status === "over" ? 0 : Math.PI;
     root.current.rotation.y += (facing - root.current.rotation.y) * Math.min(1, delta * 3.5);
 
-    // Which clip. Sliding has none, so the run keeps going while the figure
-    // is squashed - which, pitched forward at ankle height, reads as a dive.
     const wanted =
-      world.status !== "running" ? "idle" : player.posture === "jump" ? "jump" : "run";
+      world.status !== "running"
+        ? "idle"
+        : sliding
+          ? "slide"
+          : player.posture === "jump"
+            ? "jump"
+            : "run";
 
     if (wanted !== current.current) {
       const from = actions[current.current];
@@ -150,8 +178,9 @@ export function Player() {
     // The legs keep up with the world rather than with the clip's own tempo.
     const run = actions.run;
     if (run) {
-      const rate = THREE.MathUtils.clamp(world.speed / CLIP_SPEED, MIN_RATE, MAX_RATE);
-      run.setEffectiveTimeScale(sliding ? rate * 0.35 : rate);
+      run.setEffectiveTimeScale(
+        THREE.MathUtils.clamp(world.speed / CLIP_SPEED, MIN_RATE, MAX_RATE),
+      );
     }
 
     if (shield.current) {
