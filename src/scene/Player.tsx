@@ -1,70 +1,102 @@
-import { useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { useTexture } from "@react-three/drei";
+import { useAnimations, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
-import { PLAYER_RUN_HEIGHT, PLAYER_SLIDE_HEIGHT } from "../game/constants";
+import { LANE_X, PLAYER_RUN_HEIGHT, PLAYER_SLIDE_HEIGHT, START_SPEED } from "../game/constants";
 import { getWorld } from "../store";
 
 /**
- * The runner: a low-poly figure with a real face on the front of its head.
+ * The runner: a rigged character with real skeletal animation.
  *
- * Nothing here decides anything. Position, posture and pace all come from the
- * simulation, and the one place the two are tied together is the slide: the
- * figure is scaled so its drawn height *is* the collision height, rather than
- * being a separate number that can drift away from it.
+ * Nothing here decides anything. Position, posture and pace come from the
+ * simulation; this reads them and picks a clip.
  *
- * Limbs rotate about a pivot group placed at the shoulder or hip, with the
- * mesh hung half its length below. Rotating the mesh itself would swing it
- * about its middle, which looks like a limb spinning rather than hinging.
+ * The model is Kenney's "Animated Characters Protagonists" (CC0), converted
+ * from the pack's four FBX files into one GLB by `convert.html` at the repo
+ * root - see that file for what the conversion does, and for why the clips
+ * had to be picked by length rather than by index.
+ *
+ * The pack ships idle, run and jump. There is no slide clip, so the slide is
+ * still done by squashing and pitching the whole figure, and the rule that
+ * used to be written here still holds: the figure is scaled so its drawn
+ * height *is* the collision height, rather than a second number that can
+ * drift away from it.
  */
 
-// Proportions, in world units, summing to PLAYER_RUN_HEIGHT.
-const LEG = 0.56;
-const TORSO = 0.6;
-// Deliberately out of proportion: a realistic head is a seventh of a figure
-// and at this distance that is a few pixels. This is the only place the face
-// appears, so it gets the room.
-const HEAD = 0.54;
-const SHOULDER = LEG + TORSO - 0.08;
-const ARM = 0.55;
+const MODEL = "/runner.glb";
 
 /**
- * The window of `face.jpg` that holds the face, in UV.
+ * The speed the run clip looks right at.
  *
- * Cropping here rather than shipping a second, pre-cut image: the photo is
- * the only binary in the repository and this keeps it that way. UV origin is
- * bottom-left, which is why the vertical offset is measured up from the
- * bottom rather than down from the top.
+ * The game starts at START_SPEED and climbs to nearly three times it, so the
+ * clip's playback rate follows the world's speed. Left alone, a runner at
+ * full pelt looks like they are being towed.
  */
-const FACE_OFFSET = new THREE.Vector2(0.273, 0.544);
-const FACE_REPEAT = new THREE.Vector2(0.508, 0.358);
+const CLIP_SPEED = START_SPEED;
+const MIN_RATE = 0.75;
+const MAX_RATE = 2.1;
+
+/** How long a change of clip takes to blend. Short: this is a fast game. */
+const FADE = 0.18;
 
 export function Player() {
   const root = useRef<THREE.Group>(null);
-  const bob = useRef<THREE.Group>(null);
-  const leftArm = useRef<THREE.Group>(null);
-  const rightArm = useRef<THREE.Group>(null);
-  const leftLeg = useRef<THREE.Group>(null);
-  const rightLeg = useRef<THREE.Group>(null);
+  const rig = useRef<THREE.Group>(null);
   const shield = useRef<THREE.Mesh>(null);
 
-  const face = useTexture("/face.jpg");
+  const { scene, animations } = useGLTF(MODEL);
+  const { actions } = useAnimations(animations, rig);
 
-  // An effect, not a memo. React is free to throw a useMemo cache away and
-  // run the callback again, and it is documented as being for computing a
-  // value rather than for reaching out and changing one; configuring the
-  // texture there happened to work only because the callback is idempotent.
-  // This runs before the first paint, which is early enough: R3F draws on
-  // the next animation frame, after commit.
+  // One instance, so the loaded scene is used directly rather than cloned.
+  // `useGLTF` caches by URL and this is the only component that asks for it.
+  const model = useMemo(() => scene, [scene]);
+
   useLayoutEffect(() => {
-    face.colorSpace = THREE.SRGBColorSpace;
-    face.offset.copy(FACE_OFFSET);
-    face.repeat.copy(FACE_REPEAT);
-    // Clamping, so the crop cannot tile a sliver of shoulder round the edge.
-    face.wrapS = THREE.ClampToEdgeWrapping;
-    face.wrapT = THREE.ClampToEdgeWrapping;
-    face.needsUpdate = true;
-  }, [face]);
+    model.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = false;
+      }
+    });
+  }, [model]);
+
+  /**
+   * Fit the model to the collision box instead of hard-coding a scale.
+   *
+   * The character arrives at whatever size it was exported at. Measuring it
+   * and scaling so the drawn height equals PLAYER_RUN_HEIGHT keeps the
+   * silhouette and the box that kills you the same thing by construction,
+   * and swapping the model for another one needs no new number.
+   */
+  useLayoutEffect(() => {
+    if (!rig.current) return;
+    rig.current.scale.setScalar(1);
+    rig.current.position.y = 0;
+    rig.current.updateMatrixWorld(true);
+
+    const box = new THREE.Box3().setFromObject(model);
+    const height = box.max.y - box.min.y;
+    if (height > 0) {
+      const scale = PLAYER_RUN_HEIGHT / height;
+      rig.current.scale.setScalar(scale);
+      // Feet on the floor: an export's origin is not necessarily the sole.
+      rig.current.position.y = -box.min.y * scale;
+    }
+  }, [model]);
+
+  useEffect(() => {
+    const run = actions.run;
+    if (run) {
+      run.reset().setLoop(THREE.LoopRepeat, Infinity).play();
+    }
+    const snapshot = Object.values(actions);
+    return () => {
+      for (const action of snapshot) action?.stop();
+    };
+  }, [actions]);
+
+  /** Which clip is on screen, so a change is a cross-fade and not a cut. */
+  const current = useRef<string>("run");
 
   useFrame((_, delta) => {
     const world = getWorld();
@@ -76,36 +108,51 @@ export function Player() {
 
     const sliding = player.posture === "slide";
     const height = sliding ? PLAYER_SLIDE_HEIGHT : PLAYER_RUN_HEIGHT;
-
-    // The figure is built at full height, so scaling by the ratio makes the
-    // silhouette and the collision box the same thing by construction.
     const squash = height / PLAYER_RUN_HEIGHT;
     root.current.scale.y += (squash - root.current.scale.y) * Math.min(1, delta * 18);
 
     // Leaning into a lane change, tipping forward in the air, diving on a
     // slide. `lean` is how far the eased x still is from the target lane.
-    const targetX = (player.lane - 1) * 2.4;
+    const targetX = LANE_X[player.lane] ?? 0;
     const lean = THREE.MathUtils.clamp((player.x - targetX) * -0.4, -0.45, 0.45);
     root.current.rotation.z = lean;
-    const pitch = sliding ? -0.5 : player.posture === "jump" ? -0.2 : 0;
+    const pitch = sliding ? -0.55 : player.posture === "jump" ? -0.15 : 0;
     root.current.rotation.x += (pitch - root.current.rotation.x) * Math.min(1, delta * 14);
 
-    // At the end of a run the figure turns to face the camera, which is the
-    // only moment you can see the face at all - the rest of the time you are
-    // looking at the back of their head, as you would be.
-    const facing = world.status === "over" ? Math.PI : 0;
+    // At the end of a run the figure turns to face the camera. The rest of
+    // the time you are looking at the back of their head, as you would be.
+    const facing = world.status === "over" ? 0 : Math.PI;
     root.current.rotation.y += (facing - root.current.rotation.y) * Math.min(1, delta * 3.5);
 
-    // A two-beat cycle driven by distance, so the stride speeds up with the
-    // world instead of with the frame rate. Frozen mid-slide: limbs tucked.
-    const cadence = sliding || world.status !== "running" ? 0 : Math.sin(world.distance * 1.5);
-    const swing = cadence * 0.75;
-    if (leftLeg.current) leftLeg.current.rotation.x = swing;
-    if (rightLeg.current) rightLeg.current.rotation.x = -swing;
-    // Arms counter the legs, which is what makes a run read as a run.
-    if (leftArm.current) leftArm.current.rotation.x = -swing * 0.8;
-    if (rightArm.current) rightArm.current.rotation.x = swing * 0.8;
-    if (bob.current) bob.current.position.y = Math.abs(cadence) * 0.045;
+    // Which clip. Sliding has none, so the run keeps going while the figure
+    // is squashed - which, pitched forward at ankle height, reads as a dive.
+    const wanted =
+      world.status !== "running" ? "idle" : player.posture === "jump" ? "jump" : "run";
+
+    if (wanted !== current.current) {
+      const from = actions[current.current];
+      const to = actions[wanted];
+      if (to) {
+        to.reset().setEffectiveWeight(1).fadeIn(FADE).play();
+        // The jump clip plays once and holds, rather than looping a takeoff
+        // for as long as the arc lasts.
+        if (wanted === "jump") {
+          to.setLoop(THREE.LoopOnce, 1);
+          to.clampWhenFinished = true;
+        } else {
+          to.setLoop(THREE.LoopRepeat, Infinity);
+        }
+        from?.fadeOut(FADE);
+        current.current = wanted;
+      }
+    }
+
+    // The legs keep up with the world rather than with the clip's own tempo.
+    const run = actions.run;
+    if (run) {
+      const rate = THREE.MathUtils.clamp(world.speed / CLIP_SPEED, MIN_RATE, MAX_RATE);
+      run.setEffectiveTimeScale(sliding ? rate * 0.35 : rate);
+    }
 
     if (shield.current) {
       shield.current.visible = world.shieldRemaining > 0;
@@ -117,69 +164,25 @@ export function Player() {
 
   return (
     <group ref={root}>
-      <group ref={bob}>
-        {/* Head. BoxGeometry groups run +X, -X, +Y, -Y, +Z, -Z, and the
-            runner faces -Z, so the photo goes on material-5 and the camera
-            sees material-4: the back of their head. */}
-        <mesh position={[0, LEG + TORSO + HEAD / 2, 0]} castShadow>
-          <boxGeometry args={[HEAD, HEAD, HEAD * 0.86]} />
-          <meshStandardMaterial attach="material-0" color="#2b1d16" roughness={0.9} />
-          <meshStandardMaterial attach="material-1" color="#2b1d16" roughness={0.9} />
-          <meshStandardMaterial attach="material-2" color="#20150f" roughness={0.95} />
-          <meshStandardMaterial attach="material-3" color="#8d6448" roughness={0.9} />
-          <meshStandardMaterial attach="material-4" color="#241812" roughness={0.95} />
-          <meshStandardMaterial attach="material-5" map={face} roughness={0.75} />
-        </mesh>
-
-        <mesh position={[0, LEG + TORSO / 2, 0]} castShadow>
-          <boxGeometry args={[0.72, TORSO, 0.4]} />
-          <meshStandardMaterial
-            color="#167d9c"
-            emissive="#17a8c9"
-            emissiveIntensity={0.45}
-            roughness={0.45}
-            metalness={0.25}
-          />
-        </mesh>
-
-        <group ref={leftArm} position={[-0.45, SHOULDER, 0]}>
-          <mesh position={[0, -ARM / 2, 0]} castShadow>
-            <boxGeometry args={[0.17, ARM, 0.19]} />
-            <meshStandardMaterial color="#a4785a" emissive="#3d2415" emissiveIntensity={0.35} roughness={0.8} />
-          </mesh>
-        </group>
-        <group ref={rightArm} position={[0.45, SHOULDER, 0]}>
-          <mesh position={[0, -ARM / 2, 0]} castShadow>
-            <boxGeometry args={[0.17, ARM, 0.19]} />
-            <meshStandardMaterial color="#a4785a" emissive="#3d2415" emissiveIntensity={0.35} roughness={0.8} />
-          </mesh>
-        </group>
-
-        <group ref={leftLeg} position={[-0.17, LEG, 0]}>
-          <mesh position={[0, -LEG / 2, 0]} castShadow>
-            <boxGeometry args={[0.22, LEG, 0.24]} />
-            <meshStandardMaterial color="#2a4f7d" emissive="#12354f" emissiveIntensity={0.5} roughness={0.6} />
-          </mesh>
-        </group>
-        <group ref={rightLeg} position={[0.17, LEG, 0]}>
-          <mesh position={[0, -LEG / 2, 0]} castShadow>
-            <boxGeometry args={[0.22, LEG, 0.24]} />
-            <meshStandardMaterial color="#1e3a5f" roughness={0.7} />
-          </mesh>
-        </group>
+      <group ref={rig}>
+        <primitive object={model} />
       </group>
 
-      <mesh ref={shield} visible={false} position={[0, PLAYER_RUN_HEIGHT / 2, 0]}>
-        <sphereGeometry args={[1.15, 20, 16]} />
-        <meshStandardMaterial
-          color="#4ade80"
-          emissive="#4ade80"
-          emissiveIntensity={0.5}
+      {/* The shield, drawn around the figure rather than on it. */}
+      <mesh ref={shield} position={[0, PLAYER_RUN_HEIGHT * 0.52, 0]} visible={false}>
+        <sphereGeometry args={[PLAYER_RUN_HEIGHT * 0.72, 20, 16]} />
+        <meshBasicMaterial
+          color="#19e6ff"
           transparent
-          opacity={0.2}
+          opacity={0.16}
+          blending={THREE.AdditiveBlending}
           depthWrite={false}
+          toneMapped={false}
+          side={THREE.DoubleSide}
         />
       </mesh>
     </group>
   );
 }
+
+useGLTF.preload(MODEL);
