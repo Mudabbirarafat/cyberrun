@@ -8,7 +8,8 @@ An endless runner that runs in a browser tab. Three lanes, a city at night,
 and a track generated as you go.
 
 React · TypeScript · Three.js via React Three Fiber · Zustand · Vite.
-No backend, no database, no asset pipeline — `npm install && npm run dev`.
+No backend and no database — `npm install && npm run dev`. One asset: the
+runner, a CC0 character converted to glTF by a build page in this repo.
 
 ## The decision the rest of it hangs off
 
@@ -119,7 +120,7 @@ about the run: *"You had a chain going and you threw it away."*
 
 It is not a sound clip. A meme sound is someone else's recording with
 someone else's licence on it, and a few hundred kilobytes of binary in a
-repository that otherwise has no asset pipeline at all. The browser already
+repository whose only other binary is the runner. The browser already
 has `speechSynthesis`, so the game picks a line and the browser reads it —
 nothing to download, nothing to attribute, and funnier than a buzzer because
 the voice is doing its sincere best with material it does not understand.
@@ -137,6 +138,45 @@ and a joke that only exists as audio is no joke at all on a silent one.
 Every line is about the run, never about the player — there is a test for
 that, because the distance between teasing and nagging is one sentence and
 it is easy to cross while writing jokes.
+
+## The runner is a real character now
+
+Boxes on pivot groups read as a toy whatever you do to the lighting, so the
+figure is now Kenney's **Animated Characters Protagonists** (CC0), which ships
+a rigged body and `idle`, `run` and `jump` as skeletal animation.
+
+The pack is FBX: one body and three animation files, 1.9 MB, and three.js
+needs its heavier `FBXLoader` to read any of it. Rather than add Blender or a
+converter to the toolchain, `convert.html` at the repo root does the job with
+the three.js that is already a dependency — `FBXLoader` in, `GLTFExporter`
+out, one 530 KB `.glb` with the clips attached. The FBX inputs are not
+committed; the page says where to get them.
+
+Three things the conversion gets right that a naive one does not, each of
+which was wrong on the first attempt and visible only by looking:
+
+- **Clips are picked by length, not by index.** Every file carries two
+  animation stacks, the real one and a `0.Targeting Pose` stub, and their
+  order differs per file. Taking `animations[0]` gave a 0.042-second "run
+  cycle" — a frozen pose that would have shipped as a bug nobody could name.
+- **UVs are flipped on the geometry.** FBX puts the texture origin at the
+  bottom left and glTF at the top left, so the first export sampled the skin
+  upside down: a white head and a pink torso, which is the boots and the
+  shorts in the wrong places.
+- **Vertex colours are deleted.** Kenney's meshes carry them, the material
+  here uses a texture and leaves `vertexColors` off, so they were 58 KB being
+  downloaded and ignored.
+
+The model is fitted to `PLAYER_RUN_HEIGHT` by measuring its bounding box
+rather than by a hard-coded scale, so the silhouette and the box that kills
+you stay the same thing, and swapping the character needs no new number. The
+run clip's playback rate follows the world's speed — left alone, a runner at
+full pelt looks like they are being towed.
+
+**There is no slide clip in the pack.** The slide is still the whole figure
+squashed to the collision height and pitched forward, which at ankle height
+reads as a dive. That is a compromise and it is better to write it down than
+to let you wonder why the legs keep running.
 
 ## What is measured
 
@@ -157,8 +197,12 @@ than components that mount and unmount, and the track and skyline are a fixed
 ring of geometry slid backwards and wrapped rather than geometry built as you
 run.
 
-Production bundle: 342 KB gzipped, nearly all of it Three.js and the
-postprocessing library.
+Production bundle: 366 KB gzipped, nearly all of it Three.js and the
+postprocessing library — 24 KB of that is the glTF loader and the animation
+system the character needs. Plus `runner.glb` at 530 KB, which is already
+compressed and does not gzip further. So a first visit is about 900 KB where
+it used to be 342, and that is the price of a rigged character; everything
+after the first visit is cached.
 
 ## How it looks
 

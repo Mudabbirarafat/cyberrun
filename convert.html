@@ -1,0 +1,159 @@
+<!doctype html>
+<!--
+  A one-off build step, not part of the game.
+
+  Kenney ships this pack as FBX: one rigged body and three separate animation
+  files, about 1.9 MB in total, and three.js needs its heavier FBXLoader to
+  read any of it. The game wants one small GLB with the clips already on it.
+
+  Rather than install Blender or an FBX converter, this page does the
+  conversion with the three.js that is already a dependency: FBXLoader parses
+  the files, the three animation clips are attached to the body, and
+  GLTFExporter writes a single binary .glb. It POSTs the result to a local
+  sink so the file lands on disk.
+
+  The FBX inputs are not committed - they are 1.9 MB of source for a 587 KB
+  output. To run this again:
+
+    1. Download "Animated Characters Protagonists" (CC0) from
+       https://kenney.nl/assets/animated-characters-protagonists
+    2. Copy Model/characterMedium.fbx, Animations/{idle,run,jump}.fbx and
+       Skins/skaterMaleA.png into public/_convert/
+    3. npm run dev, open /convert.html, and a sink listening on
+       127.0.0.1:8788 writes public/runner.glb
+
+  Two things this gets right that a naive conversion does not, both of which
+  were wrong on the first attempt - see the comments below for each.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>FBX to GLB</title>
+    <style>
+      body { font: 14px ui-monospace, monospace; background: #0b0e16; color: #cfe; padding: 24px; }
+      pre { white-space: pre-wrap; line-height: 1.6; }
+    </style>
+  </head>
+  <body>
+    <pre id="log">working…</pre>
+    <script type="module">
+      import * as THREE from "three";
+      import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
+      import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
+
+      const out = document.getElementById("log");
+      const say = (line) => { out.textContent += "\n" + line; };
+
+      const loader = new FBXLoader();
+      const load = (url) => new Promise((resolve, reject) => loader.load(url, resolve, undefined, reject));
+
+      try {
+        out.textContent = "loading FBX…";
+        const [body, idle, run, jump] = await Promise.all([
+          load("/_convert/characterMedium.fbx"),
+          load("/_convert/idle.fbx"),
+          load("/_convert/run.fbx"),
+          load("/_convert/jump.fbx"),
+        ]);
+
+        // Kenney's animation files carry the rig and the clip; the clip is
+        // what is wanted, renamed so the game asks for it by a stable name
+        // rather than by whatever the exporter called it.
+        const clips = [];
+        for (const [name, source] of [["idle", idle], ["run", run], ["jump", jump]]) {
+          // The longest, not the first. run.fbx turned out to carry more than
+          // one animation stack, and the first of them is a 2-key stub - a
+          // 0.042s "run cycle" that would have shipped as a frozen pose.
+          say(
+            `${name}.fbx has ${source.animations.length} stack(s): ` +
+              source.animations.map((c) => `${c.name}=${c.duration.toFixed(3)}s`).join(", "),
+          );
+          const clip = source.animations.reduce(
+            (best, candidate) => (!best || candidate.duration > best.duration ? candidate : best),
+            null,
+          );
+          if (!clip) throw new Error(`${name}.fbx has no animation`);
+          clip.name = name;
+
+          // Most of the weight in a baked FBX clip is tracks that never
+          // change. A skeleton's bones rotate; they do not slide along their
+          // parent or change size, so every `.position` track except the
+          // hips and every `.scale` track is constant data being shipped
+          // frame by frame. Dropping them is lossless for this rig.
+          const before = clip.tracks.length;
+          clip.tracks = clip.tracks.filter((track) => {
+            if (track.name.endsWith(".scale")) return false;
+            if (track.name.endsWith(".position")) return /Hips|Root/i.test(track.name);
+            return true;
+          });
+          say(`${name}: ${before} tracks -> ${clip.tracks.length}`);
+
+          clips.push(clip);
+          const t = clip.tracks[0];
+          const times = t ? Array.from(t.times).slice(0, 6).map((v) => v.toFixed(3)).join(", ") : "-";
+          say(
+            `${name}: ${clip.duration.toFixed(3)}s, ${clip.tracks.length} tracks, ` +
+              `${t ? t.times.length : 0} keys on ${t ? t.name : "-"} [${times}]`,
+          );
+        }
+
+        // The skin, applied here so the GLB carries its own texture and the
+        // game does not have to know the material's name.
+        const texture = await new THREE.TextureLoader().loadAsync("/_convert/skaterMaleA.png");
+        texture.flipY = false;
+        texture.colorSpace = THREE.SRGBColorSpace;
+
+        let meshes = 0;
+        body.traverse((child) => {
+          if (!child.isMesh && !child.isSkinnedMesh) return;
+          meshes++;
+
+          // FBX UVs use the OpenGL convention with the origin at the bottom
+          // left; glTF puts it at the top left. Exporting without
+          // reconciling the two samples the texture upside down - the first
+          // conversion gave the runner a white head and a pink torso, which
+          // is the boots and the shorts in the wrong places. Flipping V on
+          // the geometry bakes the convention change in, which is what glTF
+          // expects, rather than leaving it to a texture flag the exporter
+          // does not carry.
+          // Kenney's meshes carry per-vertex colours. The material below
+          // sets a texture and leaves `vertexColors` off, so three never
+          // reads them - they were 70-odd KB of the exported file being
+          // downloaded and then ignored.
+          if (child.geometry?.attributes?.color) {
+            child.geometry.deleteAttribute("color");
+          }
+
+          const uv = child.geometry?.attributes?.uv;
+          if (uv && !child.geometry.userData.uvFlipped) {
+            for (let i = 0; i < uv.count; i++) uv.setY(i, 1 - uv.getY(i));
+            uv.needsUpdate = true;
+            child.geometry.userData.uvFlipped = true;
+          }
+          child.material = new THREE.MeshStandardMaterial({
+            map: texture,
+            roughness: 0.75,
+            metalness: 0.05,
+          });
+        });
+        say(`body: ${meshes} mesh(es)`);
+
+        body.animations = clips;
+
+        const exporter = new GLTFExporter();
+        const glb = await exporter.parseAsync(body, { binary: true, animations: clips });
+        say(`glb: ${glb.byteLength} bytes`);
+
+        const response = await fetch("http://127.0.0.1:8788/runner.glb", {
+          method: "POST",
+          body: glb,
+        });
+        say(`saved: ${await response.text()}`);
+        say("done");
+      } catch (error) {
+        say("FAILED: " + (error?.message ?? String(error)));
+        console.error(error);
+      }
+    </script>
+  </body>
+</html>
