@@ -485,3 +485,45 @@ kbd {
   margin-right: auto;
   line-height: 1.45;
 }
+
+/* The zone announcement. Low on the screen and out of the way: it arrives
+   unbidden while you are dodging, so it must not sit anywhere your eyes
+   need to be. */
+.zone-banner {
+  position: absolute;
+  left: 50%;
+  bottom: 14%;
+  transform: translateX(-50%);
+  padding: 7px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(6, 9, 18, 0.55);
+  backdrop-filter: blur(6px);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.74rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.86);
+  animation: zone-in 0.4s cubic-bezier(0.2, 0.9, 0.3, 1), zone-out 0.5s ease-in 1.7s forwards;
+}
+
+@keyframes zone-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+}
+
+@keyframes zone-out {
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zone-banner {
+    animation: none;
+  }
+}

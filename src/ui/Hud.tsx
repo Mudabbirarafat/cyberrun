@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { COMBO_WINDOW } from "../game/constants";
 import { describe as describeMission } from "../game/missions";
 import { getWorld, useGame } from "../store";
@@ -72,6 +72,43 @@ function Paused() {
         </button>
         <p className="prompt subtle">or press any key</p>
       </div>
+    </div>
+  );
+}
+
+/**
+ * "Zone 3 · Neon Mile", for a couple of seconds on arrival.
+ *
+ * Announced on entering a zone and once when a run begins, so the first one
+ * is named too - otherwise the convention is only explained by the second
+ * one, which arrives nine hundred metres in.
+ *
+ * It is `aria-live="polite"`, not assertive: this is a thing that happened,
+ * not a thing to interrupt for.
+ */
+function ZoneBanner() {
+  const zone = useGame((state) => state.zone);
+  const label = useGame((state) => state.zoneLabel);
+  const status = useGame((state) => state.status);
+  const [showing, setShowing] = useState(false);
+
+  useEffect(() => {
+    if (status !== "running") {
+      setShowing(false);
+      return;
+    }
+    setShowing(true);
+    const timer = window.setTimeout(() => setShowing(false), 2200);
+    return () => window.clearTimeout(timer);
+  }, [zone, status]);
+
+  if (!showing) return null;
+
+  // Keyed on the zone so the entrance animation replays on each arrival
+  // rather than only on the first.
+  return (
+    <div className="zone-banner" key={zone} aria-live="polite">
+      {label}
     </div>
   );
 }
@@ -252,6 +289,7 @@ export function Hud() {
           <Score />
           <Combo />
           <Powers />
+          <ZoneBanner />
         </>
       )}
       {status === "ready" && <Ready />}

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { difficulty, generateRow, isPassable } from "./generator";
 import { createRng } from "./rng";
-import { LANE_COUNT } from "./constants";
+import { LANE_COUNT, ROW_SPACING } from "./constants";
+import { ZONE_COUNT, ZONE_LENGTH } from "./zones";
 
 /**
  * The generator's job is not to be interesting, it is to never produce a run
@@ -106,5 +107,60 @@ describe("generateRow", () => {
     const earlyPerRow = early.length / 40;
     const latePerRow = late.length / 100;
     expect(latePerRow).toBeGreaterThan(earlyPerRow);
+  });
+});
+
+describe("zones do not break the guarantee", () => {
+  it("leaves a reachable lane in every row of every zone", () => {
+    // The fairness property is tested elsewhere over the opening of a run.
+    // This walks far enough to pass through every zone twice, because a
+    // zone scales the obstacle probabilities and the easiest way to break
+    // reachability would be to make a wall likelier somewhere nobody looked.
+    const laps = 2;
+    const metres = ZONE_LENGTH * ZONE_COUNT * laps;
+    const rows = Math.ceil(metres / ROW_SPACING);
+
+    for (let seed = 1; seed <= 12; seed++) {
+      const rng = createRng(seed);
+      let reachable: number[] = [0, 1, 2];
+      let id = 1;
+
+      for (let row = 0; row < rows; row++) {
+        const distance = row * ROW_SPACING;
+        const result = generateRow(rng, distance, distance, reachable, () => id++);
+        expect(result.reachable.length).toBeGreaterThan(0);
+
+        const blocked = new Set(
+          result.entities.filter((e) => !isPassable(e.obstacle)).map((e) => e.lane),
+        );
+        for (const lane of result.reachable) {
+          expect(blocked.has(lane)).toBe(false);
+          expect(reachable.some((from) => Math.abs(lane - from) <= 1)).toBe(true);
+        }
+        reachable = result.reachable;
+      }
+    }
+  });
+
+  it("makes the zones measurably different rather than only differently named", () => {
+    // If the multipliers were not wired through, these counts would match
+    // and the zones would be a cosmetic rename of the same track.
+    const countBlocks = (zoneIndex: number) => {
+      const rng = createRng(7);
+      let id = 1;
+      let reachable: number[] = [0, 1, 2];
+      let blocks = 0;
+      const start = zoneIndex * ZONE_LENGTH;
+      for (let row = 0; row < 90; row++) {
+        const distance = start + row * ROW_SPACING;
+        const result = generateRow(rng, distance, distance, reachable, () => id++);
+        blocks += result.entities.filter((e) => e.obstacle === "block").length;
+        reachable = result.reachable;
+      }
+      return blocks;
+    };
+
+    // Freight Yard asks for more blocks than Skyway, which asks for fewer.
+    expect(countBlocks(1)).toBeGreaterThan(countBlocks(3));
   });
 });

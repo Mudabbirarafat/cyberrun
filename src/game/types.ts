@@ -54,6 +54,8 @@ export type GameEvent =
   | "combostep"
   /** The chain ran out of time. A crash emits `crash`, not this. */
   | "combobreak"
+  /** Crossed into a new zone. */
+  | "zone"
   | "crash";
 
 export interface World {
@@ -90,5 +92,7 @@ export interface World {
   nearMisses: number;
   /** Power-ups taken this run, for the missions to count. */
   powersTaken: number;
+  /** Which zone the runner is in. Counts up; it never wraps. */
+  zone: number;
   events: GameEvent[];
 }

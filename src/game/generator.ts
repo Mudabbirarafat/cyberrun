@@ -1,10 +1,23 @@
 import { DIFFICULTY_DISTANCE, LANE_COUNT } from "./constants";
 import { chance, nextInt, pick, type Rng } from "./rng";
 import type { Entity, ObstacleKind, PowerKind } from "./types";
+import { zoneAt } from "./zones";
 
 /** 0 at the start of a run, 1 once it is as hard as it gets. */
 export function difficulty(distance: number): number {
   return Math.min(1, Math.max(0, distance / DIFFICULTY_DISTANCE));
+}
+
+/**
+ * A probability, after a zone has had its say.
+ *
+ * Clamped at both ends on purpose: a zone is a flavour and must not be able
+ * to turn something off or make it certain. At 1 the row would always carry
+ * its second obstacle, which stops being difficulty and starts being a
+ * pattern.
+ */
+function weighted(base: number, multiplier: number): number {
+  return Math.min(0.95, Math.max(0, base * multiplier));
 }
 
 /** `block` fills a lane; the others are cleared by jumping or sliding. */
@@ -39,6 +52,10 @@ export function generateRow(
   nextId: () => number,
 ): { entities: Entity[]; reachable: number[] } {
   const d = difficulty(distance);
+  // What the stretch of city asks for. A zone scales probabilities and
+  // nothing else - it never chooses a lane - so the reachability guarantee
+  // below is unaffected by whatever profile is in force.
+  const zone = zoneAt(distance);
   const entities: Entity[] = [];
 
   // Lanes adjacent to, or the same as, one the player could already hold.
@@ -57,8 +74,10 @@ export function generateRow(
   // Obstacles never fill the row, and early on there is at most one.
   const allowed = d < 0.25 ? 1 : 2;
   let count = 0;
-  if (chance(rng, 0.55 + d * 0.3)) count = 1;
-  if (count === 1 && allowed === 2 && chance(rng, 0.15 + d * 0.55)) count = 2;
+  if (chance(rng, weighted(0.55 + d * 0.3, zone.density))) count = 1;
+  if (count === 1 && allowed === 2 && chance(rng, weighted(0.15 + d * 0.55, zone.density))) {
+    count = 2;
+  }
 
   const others = [0, 1, 2].filter((lane) => lane !== safeLane);
   // Fisher-Yates, so the pair chosen is not biased by lane order.
@@ -73,7 +92,7 @@ export function generateRow(
       kind: "obstacle",
       lane: others[i]!,
       z,
-      obstacle: pickObstacle(rng, d),
+      obstacle: pickObstacle(rng, d, zone.blocks),
       spent: false,
       passed: false,
     });
@@ -104,7 +123,7 @@ export function generateRow(
 
   // Collectibles go where the player can actually follow them.
   const open = [0, 1, 2].filter((lane) => !blocked.has(lane));
-  if (open.length > 0 && chance(rng, 0.65)) {
+  if (open.length > 0 && chance(rng, weighted(0.65, zone.coins))) {
     const lane = pick(rng, open);
     const run = 1 + nextInt(rng, 3);
     for (let i = 0; i < run; i++) {
@@ -119,7 +138,7 @@ export function generateRow(
     }
   }
 
-  if (open.length > 0 && chance(rng, 0.05 + d * 0.03)) {
+  if (open.length > 0 && chance(rng, weighted(0.05 + d * 0.03, zone.powers))) {
     entities.push({
       id: nextId(),
       kind: "power",
@@ -134,9 +153,10 @@ export function generateRow(
   return { entities, reachable: nextReachable };
 }
 
-function pickObstacle(rng: Rng, d: number): ObstacleKind {
+function pickObstacle(rng: Rng, d: number, blockBias: number): ObstacleKind {
   // Blocks force a lane change, so they get commoner once the player has had
-  // a little practice at jumping and sliding.
-  if (chance(rng, 0.15 + d * 0.3)) return "block";
+  // a little practice at jumping and sliding - and commoner again in a zone
+  // whose whole question is lane changes.
+  if (chance(rng, weighted(0.15 + d * 0.3, blockBias))) return "block";
   return chance(rng, 0.5) ? "barrier" : "overhead";
 }

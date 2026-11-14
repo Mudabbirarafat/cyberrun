@@ -1,6 +1,7 @@
 import * as C from "./constants";
 import { difficulty, generateRow } from "./generator";
 import { createRng, type Rng } from "./rng";
+import { zoneIndexAt } from "./zones";
 import type { GameEvent, Input, World } from "./types";
 
 /**
@@ -45,6 +46,7 @@ export function createWorld(seed: number = Date.now() >>> 0): World {
     bestCombo: 0,
     nearMisses: 0,
     powersTaken: 0,
+    zone: 0,
     events: [],
   };
   fillTrack(world);
@@ -133,6 +135,15 @@ export function step(world: World): void {
   world.shieldRemaining = Math.max(0, world.shieldRemaining - dt);
   world.magnetRemaining = Math.max(0, world.magnetRemaining - dt);
   world.slowRemaining = Math.max(0, world.slowRemaining - dt);
+
+  // Crossing into a new stretch of city. Derived from distance rather than
+  // counted, so a world restored mid-run lands in the right zone without
+  // having to replay how it got there.
+  const zone = zoneIndexAt(world.distance);
+  if (zone !== world.zone) {
+    world.zone = zone;
+    world.events.push("zone");
+  }
 
   if (world.comboRemaining > 0) {
     world.comboRemaining = Math.max(0, world.comboRemaining - dt);
