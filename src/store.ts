@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { setMuted, speak, stopSpeaking } from "./audio";
 import { HIGH_SCORE_KEY, MISSIONS_KEY, MUTED_KEY } from "./game/constants";
 import { commentate } from "./game/commentary";
+import { zoneAt, zoneLabel } from "./game/zones";
 import {
   MISSIONS_PER_SET,
   applyRun,
@@ -146,6 +147,9 @@ export interface GameState {
   multiplier: number;
   nearMisses: number;
   bestCombo: number;
+  /** Counts up for the run; the HUD announces it when it changes. */
+  zone: number;
+  zoneLabel: string;
   missions: MissionState;
   /** What the run that just ended finished off, for the game-over panel. */
   completedMissions: Mission[];
@@ -182,6 +186,8 @@ export const useGame = create<GameState>((set, get) => ({
   multiplier: 1,
   nearMisses: 0,
   bestCombo: 0,
+  zone: 0,
+  zoneLabel: zoneLabel(zoneAt(0)),
   missions: readMissions(),
   completedMissions: [],
   levelledUp: false,
@@ -210,6 +216,8 @@ export const useGame = create<GameState>((set, get) => ({
       multiplier: 1,
       nearMisses: 0,
       bestCombo: 0,
+      zone: 0,
+      zoneLabel: zoneLabel(zoneAt(0)),
       // The missions themselves carry over; only the report of what the
       // last run did is cleared.
       completedMissions: [],
@@ -262,7 +270,8 @@ export const useGame = create<GameState>((set, get) => ({
       previous.slow !== slow ||
       previous.multiplier !== world.multiplier ||
       previous.nearMisses !== world.nearMisses ||
-      previous.bestCombo !== world.bestCombo
+      previous.bestCombo !== world.bestCombo ||
+      previous.zone !== world.zone
     ) {
       const patch: Partial<GameState> = {
         status: world.status,
@@ -275,6 +284,8 @@ export const useGame = create<GameState>((set, get) => ({
         multiplier: world.multiplier,
         nearMisses: world.nearMisses,
         bestCombo: world.bestCombo,
+        zone: world.zone,
+        zoneLabel: zoneLabel(zoneAt(world.distance)),
       };
 
       if (world.status === "over" && previous.status !== "over") {

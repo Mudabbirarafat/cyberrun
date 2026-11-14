@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { LANE_X, SPAWN_AHEAD } from "../game/constants";
 import { getWorld } from "../store";
+import { zoneAt } from "../game/zones";
 
 /**
  * The road, the rails and the city.
@@ -77,6 +78,12 @@ export function Track() {
   const stripes = useRef<THREE.InstancedMesh>(null);
   const buildings = useRef<THREE.InstancedMesh>(null);
   const windows = useWindowTexture();
+  // The rails and their reflections carry the zone's colour. Collected by
+  // ref rather than re-rendered: a colour change per zone is four material
+  // writes, and routing it through React would rebuild the track.
+  const rails = useRef<THREE.MeshBasicMaterial[]>([]);
+  const tint = useMemo(() => new THREE.Color("#8ffaff"), []);
+  const target = useMemo(() => new THREE.Color(), []);
 
   const skyline = useMemo(() => {
     const out: { side: number; height: number; depth: number; offset: number; tint: number }[] = [];
@@ -96,8 +103,17 @@ export function Track() {
     return out;
   }, []);
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     const distance = getWorld().distance;
+
+    // Eased rather than switched. A zone boundary is a place you run
+    // through, not a light switch, and a hard cut at 900m reads as a bug.
+    const zone = zoneAt(distance);
+    target.set(zone.rail);
+    tint.lerp(target, Math.min(1, delta * 1.4));
+    for (const material of rails.current) {
+      if (material) material.color.copy(tint);
+    }
 
     if (stripes.current) {
       const span = STRIPE_COUNT * STRIPE_SPACING;
@@ -118,6 +134,9 @@ export function Track() {
     }
 
     if (buildings.current) {
+      // The skyline takes the zone's hue too, which is what makes the
+      // change read as somewhere else rather than as new paint on the rails.
+      const zoneHue = zone.hue;
       const span = (BUILDING_COUNT / 2) * BUILDING_SPACING;
       for (let i = 0; i < skyline.length; i++) {
         const b = skyline[i]!;
@@ -130,7 +149,7 @@ export function Track() {
         buildings.current.setMatrixAt(i, dummy.matrix);
         // Cool and nearly black: the windows supply the colour, the mass
         // supplies the silhouette.
-        colour.setHSL(0.6 + b.tint * 0.1, 0.5, 0.035 + b.tint * 0.025);
+        colour.setHSL(zoneHue + b.tint * 0.1, 0.5, 0.035 + b.tint * 0.025);
         buildings.current.setColorAt(i, colour);
       }
       buildings.current.count = skyline.length;
@@ -157,7 +176,13 @@ export function Track() {
         <group key={side}>
           <mesh position={[side * (ROAD_WIDTH / 2), 0.16, -ROAD_LENGTH / 2 + 10]}>
             <boxGeometry args={[0.14, 0.32, ROAD_LENGTH]} />
-            <meshBasicMaterial color="#8ffaff" toneMapped={false} />
+            <meshBasicMaterial
+              ref={(m) => {
+                if (m) rails.current[side > 0 ? 0 : 1] = m;
+              }}
+              color="#8ffaff"
+              toneMapped={false}
+            />
           </mesh>
           {/* The rail's reflection in the wet road. Additive and faint: a
               cheap stand-in for a reflection pass, which at this frame budget
@@ -168,6 +193,9 @@ export function Track() {
           >
             <planeGeometry args={[1.1, ROAD_LENGTH]} />
             <meshBasicMaterial
+              ref={(m) => {
+                if (m) rails.current[side > 0 ? 2 : 3] = m;
+              }}
               color="#19e6ff"
               transparent
               opacity={0.1}

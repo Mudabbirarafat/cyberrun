@@ -22,7 +22,7 @@ reads that world and moves meshes. It decides nothing.
 
 That split buys two things that are hard to get any other way.
 
-**It can be tested without a screen.** 71 tests run in about a second with no
+**It can be tested without a screen.** 83 tests run in about a second with no
 browser, no canvas and no mocking of WebGL. They are about the game rather
 than about React.
 
@@ -226,6 +226,43 @@ eleven units a second that reads as someone who does not much care whether
 they make it. The rate is tied to the world's speed with a floor well above
 1x.
 
+## The run goes somewhere
+
+Every 900 metres the city changes: a name, a palette, and a different
+question. The zones cycle through five and the counter does not wrap, so the
+second time you reach Downtown it is zone 6 — being told you were back in
+zone 1 after four and a half kilometres would read as losing progress.
+
+| zone | what it asks of you |
+|---|---|
+| Downtown | the baseline |
+| Freight Yard | lane changes — half again as many lane-filling blocks |
+| Neon Mile | a breather that pays — coins and power-ups up, obstacles down |
+| Skyway | jumping and sliding — blocks cut by more than half |
+| Overdrive | all of it at once, which is what makes arriving there mean something |
+
+**A zone scales probabilities and never chooses a lane.** That is the whole
+reason this was safe to add: `generateRow`'s guarantee — that every row
+leaves a lane you can actually reach — is a property of *where* obstacles go,
+and a zone has no say in that. There is a test that walks two full laps of
+every zone across twelve seeds and checks the guarantee still holds, and
+another that counts blocks in Freight Yard against Skyway, because a set of
+multipliers that was not actually wired through would leave the zones as a
+cosmetic rename of the same track.
+
+They are called zones rather than levels because `Level` is already the
+missions counter, and two different numbers both called "level" on the same
+screen is a bug report waiting to happen.
+
+The difficulty curve is unchanged and still runs underneath: `difficulty()`
+climbs with total distance, so the second lap of the same five zones is
+harder than the first. Zones supply variety, not difficulty.
+
+The palette eases rather than switching — a boundary is a place you run
+through, not a light switch — and the rails, their reflections and the
+skyline's hue all move together, because changing only the rails reads as new
+paint rather than as somewhere else.
+
 ## What is measured
 
 Frame timing with the full effect stack running, 240 frames in the dev build
@@ -340,7 +377,7 @@ browsers refuse to start one without a gesture.
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # 71 tests, no browser needed
+npm test           # 83 tests, no browser needed
 npm run build
 ```
 
@@ -352,7 +389,7 @@ src/game/          the simulation - no Three.js anywhere in here
   rng.ts           seeded, so a track can be replayed and tested
   generator.ts     rows, and the survivable/reachable guarantees
   world.ts         step(), collision, scoring, the fixed-step accumulator
-  *.test.ts        71 tests
+  *.test.ts        83 tests
 src/scene/         React Three Fiber - reads the world, decides nothing
 src/ui/            HUD and overlays, in DOM rather than in WebGL
 src/store.ts       the bridge: the world stays out of React state

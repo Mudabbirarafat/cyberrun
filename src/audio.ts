@@ -184,6 +184,14 @@ export function playEvent(event: GameEvent): void {
       // announced. A crash has its own noise and does not also play this.
       tone({ type: "sine", from: 480, to: 180, duration: 0.22, gain: 0.07 });
       return;
+    case "zone":
+      // A rising arpeggio: three notes up, the shape of a door opening.
+      // Quiet, because it fires on its own and not because you did
+      // anything.
+      tone({ type: "sine", from: 523, to: 523, duration: 0.1, gain: 0.07 });
+      tone({ type: "sine", from: 659, to: 659, duration: 0.1, gain: 0.07 }, 0.09);
+      tone({ type: "sine", from: 988, to: 988, duration: 0.22, gain: 0.08 }, 0.18);
+      return;
     case "crash":
       noise(0.45, 0.32);
       tone({ type: "sawtooth", from: 260, to: 50, duration: 0.5, gain: 0.2 });
