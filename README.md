@@ -353,6 +353,12 @@ talking. The setting is remembered.
 
 On a phone: swipe to move, tap to jump.
 
+A run starts and restarts from a **button**, not from any key. "Press
+anything to run" meant a run could begin because somebody reached for the
+volume, tabbed back to the window or hit `M` to mute — and on the game-over
+screen it meant the next run started before the score had been read. The
+movement keys do nothing until a run is under way.
+
 Coins and near misses chain into a multiplier — it shows at the top of the
 screen once it is worth something, with a bar for how long you have to keep
 it. Dodge late to earn the near misses; see above for why that is the only

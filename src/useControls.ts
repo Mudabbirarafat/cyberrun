@@ -29,24 +29,24 @@ const SWIPE_THRESHOLD = 26;
 
 export function useControls(): void {
   useEffect(() => {
-    const { send, start, restart } = useGame.getState();
+    const { send } = useGame.getState();
 
-    // Anything at all begins or restarts a run; only a running one takes
-    // movement. Read from the store rather than a captured value, or the
-    // first game over leaves the handler stuck on a stale status.
+    // Movement only, and only while a run is going. The status is read from
+    // the store each time rather than captured, or the first game over
+    // leaves the handler stuck on a stale one.
     const act = (input: Input) => {
       unlockAudio();
       const status = useGame.getState().status;
-      if (status === "ready") {
-        start();
-        return;
-      }
-      if (status === "over") {
-        restart();
-        return;
-      }
+
+      // Starting and restarting are button presses now, not "any key".
+      // "Press anything" means a run begins because somebody reached for
+      // the volume, tabbed to the window, or hit M to mute - and on the
+      // game-over screen it meant the next run started before the score
+      // had been read.
+      if (status !== "running") return;
+
       // A paused run takes no movement. Any of the normal keys resumes it,
-      // so the one thing a player tries - press something - works.
+      // which is safe because the run is already under way.
       if (useGame.getState().paused) {
         useGame.getState().togglePaused();
         return;

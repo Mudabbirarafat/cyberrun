@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { unlockAudio } from "../audio";
 import { COMBO_WINDOW } from "../game/constants";
 import { describe as describeMission } from "../game/missions";
 import { getWorld, useGame } from "../store";
@@ -198,6 +199,8 @@ function Missions() {
 }
 
 function Ready() {
+  const start = useGame((state) => state.start);
+
   return (
     <div className="overlay">
       <div className="panel">
@@ -222,7 +225,19 @@ function Ready() {
         </ul>
         <p className="touch">On a phone: swipe to move, tap to jump.</p>
         <Missions />
-        <p className="prompt">Press anything to run</p>
+        {/* A button, not "press anything". The audio context has to be
+            opened by a real gesture and this is now the only one that
+            happens before a run, so the unlock lives here. */}
+        <button
+          type="button"
+          onClick={() => {
+            unlockAudio();
+            start();
+          }}
+          autoFocus
+        >
+          Run
+        </button>
       </div>
     </div>
   );
@@ -269,10 +284,16 @@ function GameOver() {
         </div>
         {levelledUp && <p className="levelled">All three done — level {missions.level}</p>}
         <Missions />
-        <button type="button" onClick={restart} autoFocus>
+        <button
+          type="button"
+          onClick={() => {
+            unlockAudio();
+            restart();
+          }}
+          autoFocus
+        >
           Run again
         </button>
-        <p className="prompt subtle">or press any key</p>
       </div>
     </div>
   );
