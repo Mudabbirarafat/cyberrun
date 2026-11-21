@@ -1,3 +1,5 @@
+import type { Hunter } from "./hunter";
+
 export type Posture = "run" | "jump" | "slide";
 
 export type Input = "left" | "right" | "jump" | "slide";
@@ -56,6 +58,10 @@ export type GameEvent =
   | "combobreak"
   /** Crossed into a new zone. */
   | "zone"
+  /** The hunter came into range. Fires once per approach, not per step. */
+  | "hunted"
+  /** The hunter reached the player. A different ending from `crash`. */
+  | "caught"
   | "crash";
 
 export interface World {
@@ -94,5 +100,7 @@ export interface World {
   powersTaken: number;
   /** Which zone the runner is in. Counts up; it never wraps. */
   zone: number;
+  /** What is behind you, and how far back. See `hunter.ts`. */
+  hunter: Hunter;
   events: GameEvent[];
 }

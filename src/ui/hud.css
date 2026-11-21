@@ -527,3 +527,23 @@ kbd {
     animation: none;
   }
 }
+
+/* The hunter closing.
+   A ring of red bled in from the edges, opacity driven from the simulation
+   in an animation frame. `inset` rather than a full-screen overlay so the
+   middle of the screen - where the player is actually looking - stays
+   clear: a tint over the track would make the obstacles harder to read at
+   exactly the moment reading them matters most. */
+.danger {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 2;
+  background: radial-gradient(
+    ellipse at 50% 58%,
+    transparent 38%,
+    rgba(255, 45, 85, 0.18) 72%,
+    rgba(255, 20, 60, 0.52) 100%
+  );
+}

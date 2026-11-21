@@ -489,3 +489,127 @@ describe("near misses", () => {
     expect(world.nearMisses).toBe(0);
   });
 });
+
+describe("the hunter", () => {
+  it("starts far enough back to be invisible", () => {
+    const world = createWorld(1);
+    expect(world.hunter.gap).toBe(C.HUNTER_REST_GAP);
+  });
+
+  it("lunges when a shield eats a crash", () => {
+    const world = emptyWorld();
+    world.shieldRemaining = C.POWER_DURATION;
+    place(world, { kind: "obstacle", obstacle: "block", lane: 1, z: 6 });
+    const before = world.hunter.gap;
+
+    run(world, 8);
+
+    expect(world.status).toBe("running");
+    expect(drainEvents(world)).toContain("shielded");
+    // Survived the wall, lost most of the daylight. Recovery during the
+    // few steps it took to get there is why this is not an equality.
+    expect(before - world.hunter.gap).toBeGreaterThan(C.HUNTER_LUNGE_SHIELDED - 1);
+  });
+
+  it("does not charge a saved crash twice", () => {
+    // breakCombo also runs on a crash. If it billed the hunter as well, a
+    // shielded crash would cost the lunge plus the combo bite, and being
+    // saved would be nearly as bad as not being saved.
+    const world = emptyWorld();
+    world.shieldRemaining = C.POWER_DURATION;
+    world.combo = 8;
+    world.comboRemaining = C.COMBO_WINDOW;
+    place(world, { kind: "obstacle", obstacle: "block", lane: 1, z: 6 });
+    const before = world.hunter.gap;
+
+    run(world, 8);
+
+    expect(world.combo).toBe(0);
+    expect(before - world.hunter.gap).toBeLessThan(
+      C.HUNTER_LUNGE_SHIELDED + C.HUNTER_LUNGE_COMBO_BREAK,
+    );
+  });
+
+  it("takes a small bite when a chain times out", () => {
+    const world = emptyWorld();
+    world.combo = 3;
+    world.comboRemaining = 0.05;
+    world.hunter.gap = 20;
+    const before = world.hunter.gap;
+
+    run(world, 4);
+
+    expect(drainEvents(world)).toContain("combobreak");
+    expect(world.hunter.gap).toBeLessThan(before + C.HUNTER_RECOVER_RATE);
+  });
+
+  it("is pushed back by a coin and further by a near miss", () => {
+    // One step each, so both worlds drift by exactly the same amount and
+    // the only difference left is what was picked up.
+    const coins = emptyWorld();
+    coins.hunter.gap = 10;
+    place(coins, { kind: "coin", lane: 1, z: coins.distance + 0.2 });
+    step(coins);
+
+    const misses = emptyWorld();
+    misses.hunter.gap = 10;
+    // Mid lane change: inside the near-miss band, outside the one that hits.
+    misses.player.lane = 0;
+    misses.player.x = -0.6;
+    place(misses, { kind: "obstacle", obstacle: "block", lane: 0, z: misses.distance + 0.2 });
+    step(misses);
+
+    expect(coins.coins).toBe(1);
+    expect(misses.nearMisses).toBe(1);
+    expect(coins.hunter.gap).toBeGreaterThan(10);
+    expect(misses.hunter.gap).toBeGreaterThan(coins.hunter.gap);
+  });
+
+  it("ends the run with `caught`, not `crash`", () => {
+    const world = emptyWorld();
+    world.hunter.gap = 0.01;
+    world.slowRemaining = C.POWER_DURATION;
+
+    run(world, 20);
+
+    expect(world.status).toBe("over");
+    const events = drainEvents(world);
+    expect(events).toContain("caught");
+    expect(events).not.toContain("crash");
+  });
+
+  it("still settles the score when it catches you", () => {
+    // A crash falls through to the score line. Being caught has to as well,
+    // or the two endings report different totals for the same distance.
+    const world = emptyWorld();
+    world.hunter.gap = 0.01;
+    world.slowRemaining = C.POWER_DURATION;
+    world.bonus = 500;
+
+    run(world, 20);
+
+    expect(world.status).toBe("over");
+    expect(world.score).toBe(Math.floor(world.distance * C.DISTANCE_SCORE) + 500);
+  });
+
+  it("announces itself once as it comes into range", () => {
+    const world = emptyWorld();
+    world.hunter.gap = C.HUNTER_CLOSE_GAP + 0.2;
+    world.slowRemaining = C.POWER_DURATION;
+
+    run(world, 6);
+
+    const hunted = drainEvents(world).filter((e) => e === "hunted");
+    expect(hunted).toHaveLength(1);
+  });
+
+  it("leaves a clean run alone", () => {
+    const world = emptyWorld();
+    run(world, 400);
+
+    expect(world.status).toBe("running");
+    expect(world.hunter.lunges).toBe(0);
+    expect(world.hunter.gap).toBeGreaterThan(C.HUNTER_CLOSE_GAP);
+    expect(drainEvents(world)).not.toContain("hunted");
+  });
+});

@@ -192,6 +192,21 @@ export function playEvent(event: GameEvent): void {
       tone({ type: "sine", from: 659, to: 659, duration: 0.1, gain: 0.07 }, 0.09);
       tone({ type: "sine", from: 988, to: 988, duration: 0.22, gain: 0.08 }, 0.18);
       return;
+    case "hunted":
+      // A low snarl under everything else. It has to be felt rather than
+      // listened to: it fires while the player is busy, and a bright sound
+      // here would be mistaken for something they collected.
+      tone({ type: "sawtooth", from: 90, to: 160, duration: 0.5, gain: 0.13 });
+      tone({ type: "sawtooth", from: 61, to: 108, duration: 0.55, gain: 0.1 }, 0.02);
+      noise(0.3, 0.05);
+      return;
+    case "caught":
+      // Down where the crash is bright. A wall is a bang; this is being
+      // taken, so it is slower, lower, and has nothing metallic in it.
+      noise(0.6, 0.26);
+      tone({ type: "sawtooth", from: 180, to: 32, duration: 0.8, gain: 0.22 });
+      tone({ type: "square", from: 120, to: 28, duration: 0.9, gain: 0.14 }, 0.05);
+      return;
     case "crash":
       noise(0.45, 0.32);
       tone({ type: "sawtooth", from: 260, to: 50, duration: 0.5, gain: 0.2 });

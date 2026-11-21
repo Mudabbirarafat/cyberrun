@@ -263,6 +263,69 @@ through, not a light switch — and the rails, their reflections and the
 skyline's hue all move together, because changing only the rails reads as new
 paint rather than as somewhere else.
 
+## Something is behind you
+
+A hunter follows the runner. It is not an obstacle and it never enters a
+lane — it lives on a single number, how many units back it is, and that
+choice is the whole design.
+
+`generateRow` promises every row leaves a lane the player can actually reach.
+A chaser that could stand in a lane, or cut across them, would break that
+promise *silently*: the row would still be fair and the run would still be
+unsurvivable. Keeping it on a one-dimensional gap leaves the guarantee
+untouched, and means the entire chase is tested with no renderer, no canvas
+and no clock.
+
+| what you did | what it does |
+|---|---|
+| crashed, and a shield ate it | gains 9 units |
+| let the chain time out | gains 2.5 |
+| took a coin | loses 0.35 |
+| threaded a near miss | loses 1.6 |
+| picked up `slow` | gains while it runs |
+
+Otherwise it drifts back to a resting distance that starts at 26 units — off
+camera, so a clean run never meets it — and closes to 11 over the first three
+kilometres. That curve is the difficulty: early on one mistake is survivable,
+and by the end a shielded crash leaves two units of daylight and the next
+mistake is the last one.
+
+**It makes the shield mean something.** Walking away from a wall used to be
+free. Now it buys your life and not your comfort, and two mistakes close
+together are far worse than two mistakes far apart. It also gives a good run
+something to *earn* rather than only something to avoid: a near miss is worth
+four coins of daylight, so the riskiest way out of trouble is also the best
+one.
+
+### Drawing a thing that is behind the camera
+
+The camera sits about ten units behind the runner, so "behind the runner" is
+the space between the runner and the lens. Three attempts, and the first two
+are worth recording because both looked plausible on paper:
+
+**Draw it at its true gap.** A hunter 26 units back is then *on top of the
+camera*, filling the frame, and one about to catch you is next to the runner
+and small. Closing makes it shrink. So it is only drawn inside 5.5 units, and
+`CameraRig` eases back as the menace rises to hold both in shot — the
+comparison the eye then makes is hunter-against-runner, which is the one that
+means something.
+
+**Give it the obstacles' near-black body.** The obstacles get away with it
+because they pass through the two rim lights either side of the runner. The
+hunter is behind all of that, in the one part of the scene nothing lights, so
+the same colour there is not a dark shape — it is no shape at all. The first
+build rendered as a hollow red ring with nothing inside it.
+
+**Pin it at a fixed height.** Nearer the camera means lower in frame, so it
+fell out of the bottom of the picture as it appeared and then climbed onto
+the runner's head as it arrived. Its height now rides the gap, which cancels
+that out: it holds roughly one place on screen and what changes is how much
+of the frame it fills.
+
+The eyes face the camera rather than the direction it is running. That is
+anatomically wrong and it is staying: from behind, a forward-facing pair is
+permanently out of shot, and a thing with no eyes is a blob.
+
 ## What is measured
 
 Frame timing with the full effect stack running, 240 frames in the dev build
@@ -395,7 +458,8 @@ src/game/          the simulation - no Three.js anywhere in here
   rng.ts           seeded, so a track can be replayed and tested
   generator.ts     rows, and the survivable/reachable guarantees
   world.ts         step(), collision, scoring, the fixed-step accumulator
-  *.test.ts        83 tests
+  hunter.ts        the chase: one number, and the rules that move it
+  *.test.ts        116 tests
 src/scene/         React Three Fiber - reads the world, decides nothing
 src/ui/            HUD and overlays, in DOM rather than in WebGL
 src/store.ts       the bridge: the world stays out of React state

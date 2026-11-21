@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { unlockAudio } from "../audio";
 import { COMBO_WINDOW } from "../game/constants";
 import { describe as describeMission } from "../game/missions";
+import { menace } from "../game/hunter";
 import { getWorld, useGame } from "../store";
 import "./hud.css";
 
@@ -253,6 +254,7 @@ function GameOver() {
   const levelledUp = useGame((state) => state.levelledUp);
   const missions = useGame((state) => state.missions);
   const crashLine = useGame((state) => state.crashLine);
+  const caught = useGame((state) => state.caught);
   const restart = useGame((state) => state.restart);
 
   return (
@@ -264,7 +266,7 @@ function GameOver() {
         <div className="avatar">
           <img src="/face.jpg" alt="" aria-hidden="true" />
         </div>
-        <h2>{beatBest ? "New best" : "Wiped out"}</h2>
+        <h2>{beatBest ? "New best" : caught ? "Caught" : "Wiped out"}</h2>
         <div className="final">{score.toLocaleString()}</div>
         {/* Written as well as spoken. Most tabs are muted, and a joke that
             only exists as audio is no joke at all on a silent one. */}
@@ -299,6 +301,40 @@ function GameOver() {
   );
 }
 
+/**
+ * The screen reddening as the hunter closes.
+ *
+ * Painted straight from the world in an animation frame rather than through
+ * the store: the gap changes 120 times a second and re-rendering React for
+ * it would cost more than the whole rest of the HUD put together. The combo
+ * bar above does the same thing for the same reason.
+ */
+function Danger() {
+  const status = useGame((state) => state.status);
+  const edge = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (status !== "running") return;
+    let frame = 0;
+    const paint = () => {
+      const fear = menace(getWorld().hunter);
+      if (edge.current) {
+        edge.current.style.opacity = String(fear);
+        // A heartbeat, and it quickens. At rest it is invisible anyway, so
+        // the cost of animating it is only paid while something is wrong.
+        const beat = fear > 0 ? 1 + Math.sin(performance.now() / (260 - fear * 120)) * 0.06 : 1;
+        edge.current.style.transform = `scale(${beat})`;
+      }
+      frame = requestAnimationFrame(paint);
+    };
+    frame = requestAnimationFrame(paint);
+    return () => cancelAnimationFrame(frame);
+  }, [status]);
+
+  if (status !== "running") return null;
+  return <div className="danger" ref={edge} aria-hidden="true" />;
+}
+
 export function Hud() {
   const status = useGame((state) => state.status);
   const paused = useGame((state) => state.paused);
@@ -311,6 +347,7 @@ export function Hud() {
           <Combo />
           <Powers />
           <ZoneBanner />
+          <Danger />
         </>
       )}
       {status === "ready" && <Ready />}

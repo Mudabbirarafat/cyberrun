@@ -9,6 +9,7 @@ function report(overrides: Partial<RunReport> = {}): RunReport {
     bestCombo: 3,
     nearMisses: 1,
     beatBest: false,
+    caught: false,
     ...overrides,
   };
 }
@@ -89,5 +90,20 @@ describe("what it is allowed to say", () => {
 
   it("has no line that is only punctuation or whitespace", () => {
     for (const line of allLines()) expect(line.trim().replace(/[^\w]/g, "").length).toBeGreaterThan(2);
+  });
+});
+
+describe("being caught", () => {
+  it("says so, even on a personal best", () => {
+    // The caught bucket sits above the best-score one deliberately: it is
+    // the more specific fact, and "new best" is cold comfort when
+    // something ate you.
+    const line = commentate(report({ caught: true, beatBest: true }), 0.5);
+    expect(line.toLowerCase()).toMatch(/got you|behind you|coming|caught/);
+  });
+
+  it("leaves an ordinary crash alone", () => {
+    const line = commentate(report({ caught: false, distance: 2500 }), 0.5);
+    expect(line.toLowerCase()).not.toMatch(/got you|behind you/);
   });
 });

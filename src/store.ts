@@ -156,6 +156,8 @@ export interface GameState {
   levelledUp: boolean;
   /** What the game said about the last run. Shown as well as spoken. */
   crashLine: string;
+  /** The last run ended in the hunter's jaws rather than against a wall. */
+  caught: boolean;
   muted: boolean;
   /**
    * Held outside the simulation. The world has no idea it is paused: the
@@ -192,6 +194,7 @@ export const useGame = create<GameState>((set, get) => ({
   completedMissions: [],
   levelledUp: false,
   crashLine: "",
+  caught: false,
   muted: readMuted(),
   paused: false,
 
@@ -223,6 +226,7 @@ export const useGame = create<GameState>((set, get) => ({
       completedMissions: [],
       levelledUp: false,
       crashLine: "",
+      caught: false,
       paused: false,
     });
   },
@@ -289,6 +293,9 @@ export const useGame = create<GameState>((set, get) => ({
       };
 
       if (world.status === "over" && previous.status !== "over") {
+        // The gap is only zero when the hunter closed it, so the ending
+        // names itself without the step having to report which it was.
+        patch.caught = world.hunter.gap <= 0;
         if (world.score > previous.highScore) {
           patch.highScore = world.score;
           patch.beatBest = true;
@@ -322,6 +329,7 @@ export const useGame = create<GameState>((set, get) => ({
             bestCombo: world.bestCombo,
             nearMisses: world.nearMisses,
             beatBest: Boolean(patch.beatBest),
+            caught: Boolean(patch.caught),
           },
           Math.random(),
           lastLine,

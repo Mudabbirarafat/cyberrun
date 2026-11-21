@@ -3,9 +3,11 @@ import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { playEvents } from "../audio";
 import { MAX_SPEED, START_SPEED } from "../game/constants";
+import { menace } from "../game/hunter";
 import { getWorld, useGame } from "../store";
 import { Effects } from "./Effects";
 import { Entities } from "./Entities";
+import { Hunter } from "./Hunter";
 import { Player } from "./Player";
 import { Sparks } from "./Sparks";
 import { Track } from "./Track";
@@ -48,7 +50,14 @@ function CameraRig() {
     const targetX = player.x * 0.42;
     camera.position.x += (targetX - camera.position.x) * Math.min(1, delta * 6);
 
-    const targetZ = 9.8 + pace * 2.4;
+    // Easing back as the hunter closes. Without this the chase is invisible:
+    // the hunter lives between the runner and the lens, so at a gap of five
+    // units it is nearly on top of the camera and at a gap of one it is next
+    // to the runner, which would make closing look like retreating. Pulling
+    // back holds both of them in shot, and the shot getting wider as the
+    // thing arrives is its own kind of bad news.
+    const fear = menace(world.hunter);
+    const targetZ = 9.8 + pace * 2.4 + fear * 6;
     camera.position.z += (targetZ - camera.position.z) * Math.min(1, delta * 2);
     camera.position.y = 4.7 + player.y * 0.3;
 
@@ -110,6 +119,7 @@ export function GameScene() {
 
       <Track />
       <Entities />
+      <Hunter />
       <Sparks />
       {/* The runner's face is a texture and `useTexture` suspends while it
           loads. Without a boundary that suspension unmounts the whole scene

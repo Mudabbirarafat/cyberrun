@@ -1,5 +1,6 @@
 import * as C from "./constants";
 import { difficulty, generateRow } from "./generator";
+import { createHunter, drift, isCaught, lunge, push, takeAlert } from "./hunter";
 import { createRng, type Rng } from "./rng";
 import { zoneIndexAt } from "./zones";
 import type { GameEvent, Input, World } from "./types";
@@ -47,6 +48,7 @@ export function createWorld(seed: number = Date.now() >>> 0): World {
     nearMisses: 0,
     powersTaken: 0,
     zone: 0,
+    hunter: createHunter(),
     events: [],
   };
   fillTrack(world);
@@ -152,6 +154,27 @@ export function step(world: World): void {
 
   fillTrack(world);
   resolveCollisions(world);
+
+  // After the collisions, so a shielded crash's lunge lands in the same step
+  // that caused it. Being saved by a shield and eaten a tenth of a second
+  // later is the intended reading, and splitting the two across steps would
+  // make it look like two unrelated things.
+  if (world.status === "running") {
+    drift(world.hunter, {
+      dt,
+      distance: world.distance,
+      slowed: world.slowRemaining > 0,
+    });
+    if (takeAlert(world.hunter)) world.events.push("hunted");
+    if (isCaught(world.hunter)) {
+      world.status = "over";
+      world.events.push("caught");
+      // No early return: a crash falls through to the score line below, and
+      // being caught has to settle the run's score the same way or the two
+      // endings report different totals for the same distance.
+    }
+  }
+
   recycle(world);
 
   // Distance plus what was earned, rather than distance plus a flat rate per
@@ -248,6 +271,9 @@ function resolveCollisions(world: World): void {
           breakCombo(world, null);
           if (world.shieldRemaining > 0) {
             world.shieldRemaining = 0;
+            // The shield buys your life, not your comfort. Walking away from
+            // a wall is still the worst thing that can happen to the gap.
+            lunge(world.hunter, C.HUNTER_LUNGE_SHIELDED);
             world.events.push("shielded");
           } else {
             world.status = "over";
@@ -289,6 +315,7 @@ function resolveCollisions(world: World): void {
     if (entity.kind === "coin") {
       world.coins += 1;
       world.bonus += C.COIN_SCORE * world.multiplier;
+      push(world.hunter, C.HUNTER_PUSH_COIN);
       extendCombo(world);
       world.events.push("coin");
     } else {
@@ -342,12 +369,23 @@ function breakCombo(world: World, event: "combobreak" | null): void {
   world.combo = 0;
   world.comboRemaining = 0;
   world.multiplier = 1;
-  if (event) world.events.push(event);
+  // Only a chain that timed out feeds the hunter. The other caller is a
+  // crash, which either ends the run or has already been charged the much
+  // larger shielded lunge - billing it twice would make a saved crash
+  // nearly as fatal as an unsaved one.
+  if (event) {
+    lunge(world.hunter, C.HUNTER_LUNGE_COMBO_BREAK);
+    world.events.push(event);
+  }
 }
 
 function registerNearMiss(world: World): void {
   world.nearMisses += 1;
   world.bonus += C.NEAR_MISS_SCORE * world.multiplier;
+  // Worth four coins of daylight. Threading an obstacle while something is
+  // breathing on you should be the way out of trouble, which means the
+  // riskiest option has to also be the most rewarding one.
+  push(world.hunter, C.HUNTER_PUSH_NEAR_MISS);
   extendCombo(world);
   world.events.push("nearmiss");
 }

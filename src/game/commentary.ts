@@ -19,6 +19,8 @@ export interface RunReport {
   bestCombo: number;
   nearMisses: number;
   beatBest: boolean;
+  /** Taken by the hunter rather than stopped by a wall. */
+  caught: boolean;
 }
 
 interface Bucket {
@@ -34,6 +36,17 @@ interface Bucket {
  * is the difference between a game that teases and a game that nags.
  */
 const BUCKETS: readonly Bucket[] = [
+  {
+    // Before the best-score bucket on purpose: being eaten is the more
+    // specific fact, and "new best" is cold comfort when something ate you.
+    when: (r) => r.caught,
+    lines: [
+      "It got you.",
+      "Something was behind you the whole time.",
+      "You heard it coming. You just ran out of road.",
+      "Caught. The wall would have been kinder.",
+    ],
+  },
   {
     when: (r) => r.beatBest,
     lines: [
