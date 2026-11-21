@@ -158,5 +158,7 @@ export const HUNTER_ALERT_HYSTERESIS = 3;
 export const HUNTER_MAX_GAP = 30;
 
 export const HIGH_SCORE_KEY = "cyberrun.highScore";
+/** The daily best, kept with its date so yesterday's does not look like today's. */
+export const DAILY_KEY = "cyberrun.daily";
 export const MISSIONS_KEY = "cyberrun.missions";
 export const MUTED_KEY = "cyberrun.muted";

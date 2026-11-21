@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { setMuted, speak, stopSpeaking } from "./audio";
-import { HIGH_SCORE_KEY, MISSIONS_KEY, MUTED_KEY } from "./game/constants";
+import { DAILY_KEY, HIGH_SCORE_KEY, MISSIONS_KEY, MUTED_KEY } from "./game/constants";
+import { dailySeed, dayKey } from "./game/daily";
+import { shareText } from "./game/share";
 import { commentate } from "./game/commentary";
 import { zoneAt, zoneLabel } from "./game/zones";
 import {
@@ -98,6 +100,41 @@ function writeMissions(state: MissionState): void {
   }
 }
 
+/**
+ * Today's best, kept with the date it belongs to.
+ *
+ * Storing the date alongside the score is what makes this a *daily* best
+ * rather than a stale one: a value read back from a different day is not
+ * wrong, it is simply about a different track, so it is dropped rather than
+ * shown next to today's attempt.
+ */
+interface DailyRecord {
+  day: string;
+  score: number;
+}
+
+function readDaily(day: string): number {
+  try {
+    const raw = localStorage.getItem(DAILY_KEY);
+    if (raw === null) return 0;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return 0;
+    const record = parsed as Partial<DailyRecord>;
+    if (record.day !== day) return 0;
+    return typeof record.score === "number" && record.score > 0 ? record.score : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeDaily(record: DailyRecord): void {
+  try {
+    localStorage.setItem(DAILY_KEY, JSON.stringify(record));
+  } catch {
+    // As everywhere else here: the run counts, it is just not remembered.
+  }
+}
+
 function readMuted(): boolean {
   try {
     return localStorage.getItem(MUTED_KEY) === "1";
@@ -158,6 +195,20 @@ export interface GameState {
   crashLine: string;
   /** The last run ended in the hunter's jaws rather than against a wall. */
   caught: boolean;
+  /**
+   * Endless, or today's track.
+   *
+   * The simulation knows nothing about this. A daily run is `createWorld`
+   * handed a seed derived from the date instead of the clock, which is the
+   * entire feature - the seeded rng was already there for the tests.
+   */
+  mode: "endless" | "daily";
+  /** The UTC day the daily track belongs to. */
+  day: string;
+  /** Best on today's track, or 0 if today has not been played. */
+  dailyBest: number;
+  /** The finished run, as something to paste at somebody. */
+  shareLine: string;
   muted: boolean;
   /**
    * Held outside the simulation. The world has no idea it is paused: the
@@ -167,6 +218,8 @@ export interface GameState {
   paused: boolean;
 
   start: () => void;
+  /** Begin today's track. Same seed for everyone, no server involved. */
+  startDaily: () => void;
   restart: () => void;
   send: (input: Input) => void;
   toggleMuted: () => void;
@@ -195,16 +248,63 @@ export const useGame = create<GameState>((set, get) => ({
   levelledUp: false,
   crashLine: "",
   caught: false,
+  mode: "endless",
+  day: dayKey(),
+  dailyBest: readDaily(dayKey()),
+  shareLine: "",
   muted: readMuted(),
   paused: false,
 
   start: () => {
+    // An endless run from here is always a fresh random track, even if the
+    // last one was the daily: otherwise pressing Run after a daily would
+    // silently hand you the same track again.
+    if (get().mode === "daily") {
+      world = createWorld();
+      carry = 0;
+      set({ mode: "endless" });
+    }
     startRun(world);
     set({ status: world.status });
   },
 
+  startDaily: () => {
+    const day = dayKey();
+    world = createWorld(dailySeed());
+    carry = 0;
+    startRun(world);
+    set({
+      mode: "daily",
+      day,
+      dailyBest: readDaily(day),
+      status: world.status,
+      score: 0,
+      coins: 0,
+      beatBest: false,
+      shield: false,
+      magnet: false,
+      slow: false,
+      speed: world.speed,
+      multiplier: 1,
+      nearMisses: 0,
+      bestCombo: 0,
+      zone: 0,
+      zoneLabel: zoneLabel(zoneAt(0)),
+      completedMissions: [],
+      levelledUp: false,
+      crashLine: "",
+      caught: false,
+      shareLine: "",
+      paused: false,
+    });
+  },
+
   restart: () => {
-    world = createWorld();
+    // Same mode as the run that just ended. A daily restart is the same
+    // track again, which is the point of it being a daily - the seed comes
+    // from the date, so it cannot drift.
+    const daily = get().mode === "daily";
+    world = createWorld(daily ? dailySeed() : undefined);
     carry = 0;
     startRun(world);
     set({
@@ -227,6 +327,7 @@ export const useGame = create<GameState>((set, get) => ({
       levelledUp: false,
       crashLine: "",
       caught: false,
+      shareLine: "",
       paused: false,
     });
   },
@@ -296,6 +397,25 @@ export const useGame = create<GameState>((set, get) => ({
         // The gap is only zero when the hunter closed it, so the ending
         // names itself without the step having to report which it was.
         patch.caught = world.hunter.gap <= 0;
+
+        // Today's best, which is a different thing from the all-time one:
+        // it is only comparable to other people's because the track is the
+        // same, and only today.
+        const daily = previous.mode === "daily";
+        if (daily && world.score > previous.dailyBest) {
+          patch.dailyBest = world.score;
+          writeDaily({ day: previous.day, score: world.score });
+        }
+
+        patch.shareLine = shareText({
+          score: world.score,
+          distance: world.distance,
+          coins: world.coins,
+          bestCombo: world.bestCombo,
+          nearMisses: world.nearMisses,
+          caught: Boolean(patch.caught),
+          day: daily ? previous.day : undefined,
+        });
         if (world.score > previous.highScore) {
           patch.highScore = world.score;
           patch.beatBest = true;

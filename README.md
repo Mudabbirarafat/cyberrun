@@ -326,6 +326,57 @@ The eyes face the camera rather than the direction it is running. That is
 anatomically wrong and it is staying: from behind, a forward-facing pair is
 permanently out of shot, and a thing with no eyes is a blob.
 
+## One track a day
+
+**Today's track** gives everyone the same run. The seed is an FNV-1a hash of
+the UTC date, so two browsers anywhere in the world agree on it by
+arithmetic rather than by being told — there is no server here and this
+feature did not add one.
+
+It cost almost nothing, and that is the point. The simulation was already a
+pure function of a seed and a list of inputs, because that is what made it
+testable without a screen. Handing `createWorld` a seed derived from the date
+instead of the clock *is* the whole feature; nothing else in the game knows
+it is happening.
+
+Two decisions worth recording:
+
+**UTC, not local time.** Local time would give two people in different zones
+different tracks on the same date, which makes "did you beat today's?"
+meaningless — and that question is the only reason this exists. The cost is a
+turnover at an odd hour for most of the world: half past five in the morning
+in India, late evening in California. A worthwhile trade, but a trade.
+
+**The day is stored with the score.** A daily best read back on a different
+day is not wrong, it is about a different track, so it is dropped rather than
+shown next to today's attempt.
+
+The hash is deliberately a weak one. What it has to be is *reproducible* on
+every machine, not unpredictable — if two browsers disagreed about today's
+seed they would be playing different tracks and comparing scores anyway. It
+is written as shifts rather than a multiply for exactly that reason: a plain
+multiply overflows into a double and stops being the same number everywhere.
+
+## A result you can paste
+
+```
+CyberRun · daily 2026-11-21
+caught at 1,820 m · Zone 3 · Neon Mile
+2,340 pts · 18 coins · chain x4 · 7 near misses
+▰▰▰▰▰▰▰▰▰▰
+cyberrun-tau.vercel.app
+```
+
+A pure function of the run's numbers, so it is tested rather than eyeballed
+and the clipboard code in the UI holds no opinions. Near misses are left out
+when there were none: a line of zeroes is noise, and two people's results
+should differ at a glance or there is no reason to paste one at anybody.
+
+No emoji, on purpose. A share string full of them is a share string that
+renders as boxes somewhere, and the one place this text has to survive is
+somebody else's phone. Block elements are safe; there is a test that asserts
+nothing from the emoji planes creeps back in.
+
 ## What is measured
 
 Frame timing with the full effect stack running, 240 frames in the dev build
@@ -459,7 +510,9 @@ src/game/          the simulation - no Three.js anywhere in here
   generator.ts     rows, and the survivable/reachable guarantees
   world.ts         step(), collision, scoring, the fixed-step accumulator
   hunter.ts        the chase: one number, and the rules that move it
-  *.test.ts        116 tests
+  daily.ts         today's seed, from the UTC date
+  share.ts         the run as pasteable text
+  *.test.ts        141 tests
 src/scene/         React Three Fiber - reads the world, decides nothing
 src/ui/            HUD and overlays, in DOM rather than in WebGL
 src/store.ts       the bridge: the world stays out of React state

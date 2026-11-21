@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { unlockAudio } from "../audio";
 import { COMBO_WINDOW } from "../game/constants";
 import { describe as describeMission } from "../game/missions";
+import { formatCountdown, msUntilNextDay } from "../game/daily";
 import { menace } from "../game/hunter";
 import { getWorld, useGame } from "../store";
 import "./hud.css";
@@ -201,6 +202,9 @@ function Missions() {
 
 function Ready() {
   const start = useGame((state) => state.start);
+  const startDaily = useGame((state) => state.startDaily);
+  const day = useGame((state) => state.day);
+  const dailyBest = useGame((state) => state.dailyBest);
 
   return (
     <div className="overlay">
@@ -229,19 +233,83 @@ function Ready() {
         {/* A button, not "press anything". The audio context has to be
             opened by a real gesture and this is now the only one that
             happens before a run, so the unlock lives here. */}
-        <button
-          type="button"
-          onClick={() => {
-            unlockAudio();
-            start();
-          }}
-          autoFocus
-        >
-          Run
-        </button>
+        <div className="start-row">
+          {/* A button, not "press anything". The audio context has to be
+              opened by a real gesture and these are now the only ones that
+              happen before a run, so the unlock lives on both. */}
+          <button
+            type="button"
+            onClick={() => {
+              unlockAudio();
+              start();
+            }}
+            autoFocus
+          >
+            Run
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => {
+              unlockAudio();
+              startDaily();
+            }}
+          >
+            Today&rsquo;s track
+          </button>
+        </div>
+        <p className="daily-note">
+          Everyone gets the same track on {day}
+          {dailyBest > 0 && <> · your best today {dailyBest.toLocaleString()}</>}
+        </p>
       </div>
     </div>
   );
+}
+
+/**
+ * Copy the result, and say so.
+ *
+ * The clipboard API rejects without a user gesture and is missing entirely
+ * on an insecure origin, so the failure path is a real one rather than
+ * defensive decoration: a button that silently does nothing is worse than
+ * one that admits it.
+ */
+function CopyResult() {
+  const shareLine = useGame((state) => state.shareLine);
+  const [state, setState] = useState<"idle" | "done" | "failed">("idle");
+
+  if (!shareLine) return null;
+
+  return (
+    <button
+      type="button"
+      className="btn-secondary"
+      onClick={() => {
+        navigator.clipboard
+          ?.writeText(shareLine)
+          .then(() => setState("done"))
+          .catch(() => setState("failed"));
+      }}
+    >
+      {state === "done" ? "Copied" : state === "failed" ? "Copy failed" : "Copy result"}
+    </button>
+  );
+}
+
+/** How long today's track has left. */
+function DailyCountdown() {
+  const [left, setLeft] = useState(() => msUntilNextDay());
+
+  useEffect(() => {
+    // A minute is enough: the display rounds to minutes until the last hour
+    // anyway, and a per-second timer on a panel nobody watches for long is
+    // a wakeup a second for nothing.
+    const id = window.setInterval(() => setLeft(msUntilNextDay()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  return <p className="daily-note">New track in {formatCountdown(left)}</p>;
 }
 
 function GameOver() {
@@ -255,6 +323,9 @@ function GameOver() {
   const missions = useGame((state) => state.missions);
   const crashLine = useGame((state) => state.crashLine);
   const caught = useGame((state) => state.caught);
+  const mode = useGame((state) => state.mode);
+  const dailyBest = useGame((state) => state.dailyBest);
+  const day = useGame((state) => state.day);
   const restart = useGame((state) => state.restart);
 
   return (
@@ -266,6 +337,7 @@ function GameOver() {
         <div className="avatar">
           <img src="/face.jpg" alt="" aria-hidden="true" />
         </div>
+        {mode === "daily" && <p className="daily-tag">Daily · {day}</p>}
         <h2>{beatBest ? "New best" : caught ? "Caught" : "Wiped out"}</h2>
         <div className="final">{score.toLocaleString()}</div>
         {/* Written as well as spoken. Most tabs are muted, and a joke that
@@ -296,6 +368,15 @@ function GameOver() {
         >
           Run again
         </button>
+        <CopyResult />
+        {mode === "daily" && (
+          <>
+            {dailyBest > 0 && (
+              <p className="daily-note">Best on today&rsquo;s track {dailyBest.toLocaleString()}</p>
+            )}
+            <DailyCountdown />
+          </>
+        )}
       </div>
     </div>
   );

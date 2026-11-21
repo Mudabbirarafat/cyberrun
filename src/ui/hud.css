@@ -547,3 +547,39 @@ kbd {
     rgba(255, 20, 60, 0.52) 100%
   );
 }
+
+/* Two ways to start, side by side. Wraps rather than squashing: on a narrow
+   phone two buttons on one line leave neither readable. */
+.start-row {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn-secondary {
+  background: transparent;
+  border: 1px solid rgba(25, 230, 255, 0.45);
+  color: #9fe9ff;
+  box-shadow: none;
+}
+
+.btn-secondary:hover {
+  background: rgba(25, 230, 255, 0.12);
+  border-color: rgba(25, 230, 255, 0.8);
+}
+
+.daily-note {
+  margin: 0.55rem 0 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  color: rgba(190, 215, 235, 0.65);
+}
+
+.daily-tag {
+  margin: 0 0 0.2rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #19e6ff;
+}
